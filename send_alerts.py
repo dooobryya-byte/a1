@@ -17,9 +17,13 @@ def now_str():
 
 def load_state():
     if not os.path.exists(STATE_FILE):
-        return {"awaiting_reply": {}, "last_sent_date": {}}
+        return {"awaiting_reply": {}, "last_sent_date": {}, "answered_ids": {}}
     with open(STATE_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        state = json.load(f)
+    state.setdefault("awaiting_reply", {})
+    state.setdefault("last_sent_date", {})
+    state.setdefault("answered_ids", {})
+    return state
 
 
 def save_state(state):
@@ -45,7 +49,6 @@ def build_admin_notification(silent_list):
             f"{name} сегодня не ответил(а) на утреннее сообщение.\n"
             f"Может, стоит проверить, всё ли в порядке? 💛"
         )
-    # Несколько молчунов
     names = ", ".join(name for _, name in silent_list)
     return (
         f"⚠️ {ADMIN_NAME}, привет!\n"
@@ -58,7 +61,7 @@ def main():
     today = datetime.now().strftime("%Y-%m-%d")
     state = load_state()
     alerted = 0
-    silent_list = []  # (chat_id, name) тех, кто не ответил
+    silent_list = []
 
     for chat_id, info in ALLOWED_CHATS.items():
         # Админский чат не получает WARNING — он получает сводку
@@ -77,19 +80,21 @@ def main():
         if send(chat_id, text):
             print(f"[{now_str()}] 🔔 предупреждение {chat_id} ({name})")
             alerted += 1
+            # Снимаем флаг ТОЛЬКО при успешной отправке
+            del state["awaiting_reply"][chat_id]
+            silent_list.append((chat_id, name))
+        else:
+            print(f"[{now_str()}] ⚠ не удалось напомнить {chat_id} ({name}), "
+                  f"попробуем в следующий раз")
 
-        # Снимаем флаг, чтобы не спамить повторно
-        del state["awaiting_reply"][chat_id]
-
-        # 2. Запоминаем для сводки в админский чат
-        silent_list.append((chat_id, name))
-
-    # 3. Оповещение в админский чат (одно, со списком)
+    # 2. Оповещение в админский чат (одно, со списком)
     if silent_list:
         admin_text = build_admin_notification(silent_list)
         if send(ADMIN_CHAT_ID, admin_text):
             print(f"[{now_str()}] 📢 сводка в админский чат {ADMIN_CHAT_ID} "
                   f"({len(silent_list)} чел.)")
+        else:
+            print(f"[{now_str()}] ⚠ не удалось отправить сводку в админский чат")
 
     save_state(state)
     print(f"[{now_str()}] ✅ Напоминаний: {alerted}, "
