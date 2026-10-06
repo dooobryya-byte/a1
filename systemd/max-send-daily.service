@@ -1,0 +1,10 @@
+[Unit]
+Description=MAX Bot - Morning Broadcast
+
+[Service]
+Type=oneshot
+User=a1
+WorkingDirectory=/home/a1/max-bot
+ExecStart=/home/a1/max-bot/venv/bin/python /home/a1/max-bot/send_daily.py
+StandardOutput=journal
+StandardError=journal

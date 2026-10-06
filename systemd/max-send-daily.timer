@@ -1,0 +1,10 @@
+[Unit]
+Description=Run MAX Morning Broadcast Every Hour
+
+[Timer]
+OnCalendar=*-*-* *:00:00
+Persistent=true
+Unit=max-send-daily.service
+
+[Install]
+WantedBy=timers.target

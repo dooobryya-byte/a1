@@ -1,0 +1,17 @@
+[Unit]
+Description=MAX Bot - Listener + Hermes Bridge
+After=network.target
+
+[Service]
+Type=simple
+User=a1
+WorkingDirectory=/home/a1/max-bot
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/home/a1/max-bot/venv/bin/python /home/a1/max-bot/bot.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

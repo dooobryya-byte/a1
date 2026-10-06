@@ -1,0 +1,10 @@
+[Unit]
+Description=Run MAX Alerts Every Hour
+
+[Timer]
+OnCalendar=*-*-* *:00:00
+Persistent=true
+Unit=max-send-alerts.service
+
+[Install]
+WantedBy=timers.target

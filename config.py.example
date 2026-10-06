@@ -1,34 +1,44 @@
 # config.py
 
-ID_INSTANCE = "3100*************************"
-API_TOKEN = "*******************************" 
-
-
+# ===== GREEN-API =====
+ID_INSTANCE = "your_id_here"       # из личного кабинета GREEN-API
+API_TOKEN = "your_api_token_here"    # из личного кабинета GREEN-API
 BASE = f"https://3100.api.green-api.com/waInstance{ID_INSTANCE}"
 
-# Разрешённые чаты: chatId → {name, gender}
-# gender: "m" — мужской, "f" — женский
+# ===== ЧАТЫ =====
+# chatId → параметры чата.
+# gender: "m" (мужской), "f" (женский).
+# Время в 24-часовом формате, только *:00 (таймер запускается раз в час).
 ALLOWED_CHATS = {
-    "0000000": {"name": "**********", "gender": "m"},
-    "0000000": {"name": "*********",     "gender": "f"},
+    "0000000": {
+        "name": "Имя",
+        "gender": "m",
+        "morning_hour": 7,
+        "morning_minute": 0,
+        "alert_hour": 11,
+        "alert_minute": 0,
+    },
+    "1111111": {
+        "name": "Имя",
+        "gender": "f",
+        "morning_hour": 8,
+        "morning_minute": 0,
+        "alert_hour": 12,
+        "alert_minute": 0,
+    },
 }
 
-# Чат, куда уходят оповещения о молчащих (не участвует в WARNING-логике как получатель)
+# ===== АДМИН =====
+# Чат, куда уходит сводка о молчунах и куда принимаются Hermes-команды.
 ADMIN_CHAT_ID = "0000000"
-
-# Имя админа для упоминания в тексте
-ADMIN_NAME = "********"
+ADMIN_NAME = "Имя"
 
 # ===== РАСПИСАНИЕ =====
-# Сдвиг «в прошлое» (мин): защита от раннего запуска таймера.
-SCHEDULE_SHIFT_MIN = 2
-
-# Окно срабатывания (мин): «пора», если с цели прошло < 60.
-SCHEDULE_WINDOW_MIN = 60
+SCHEDULE_SHIFT_MIN = 2       # сдвиг «в прошлое» для защиты от раннего запуска
+SCHEDULE_WINDOW_MIN = 60     # окно срабатывания (минут)
 
 # ===== ПОЛЛИНГ =====
-POLL_INTERVAL = 60
-
+POLL_INTERVAL = 60           # частота опроса GREEN-API (секунд)
 STATE_FILE = "state.json"
 
 
