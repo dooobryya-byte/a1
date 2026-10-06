@@ -13,7 +13,7 @@ from config import (
 )
 
 # ===== Hermes =====
-HERMES_CMD = "hermes"
+HERMES_CMD = "/home/a1/.local/bin/hermes"
 HERMES_TIMEOUT = 120
 HERMES_PREFIXES = ("/hermes ", "❇️ ", "✳️ ")
 HERMES_THINKING_MSG = "⏳ Думаю..."
