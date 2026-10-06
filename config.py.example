@@ -19,17 +19,16 @@ ADMIN_CHAT_ID = "0000000"
 # Имя админа для упоминания в тексте
 ADMIN_NAME = "********"
 
-# Время утренней рассылки (МСК)
-MORNING_HOUR = 9
-MORNING_MINUTE = 0
+# ===== РАСПИСАНИЕ =====
+# Сдвиг «в прошлое» (мин): защита от раннего запуска таймера.
+SCHEDULE_SHIFT_MIN = 2
 
-# Через сколько часов после утреннего слать напоминание
-ALERT_AFTER_HOURS = 6
+# Окно срабатывания (мин): «пора», если с цели прошло < 60.
+SCHEDULE_WINDOW_MIN = 60
 
-# Интервал опроса в bot.py, секунды
+# ===== ПОЛЛИНГ =====
 POLL_INTERVAL = 60
 
-# Файл состояния
 STATE_FILE = "state.json"
 
 
@@ -171,10 +170,6 @@ WARNING_MESSAGES_F = [
 # ========== ХЕЛПЕР ==========
 
 def get_messages_for(chat_id: str, base_name: str) -> list:
-    """
-    Возвращает нужный набор шаблонов по полу.
-    base_name: "DAILY_QUESTION_MESSAGES", "ANSWER_MESSAGES", "WARNING_MESSAGES"
-    """
     gender = ALLOWED_CHATS.get(chat_id, {}).get("gender", "m")
     suffix = "_F" if gender == "f" else "_M"
     return globals()[f"{base_name}{suffix}"]
