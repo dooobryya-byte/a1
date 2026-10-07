@@ -10,13 +10,8 @@ from datetime import datetime
 from config import (
     BASE, API_TOKEN, ALLOWED_CHATS, ADMIN_CHAT_ID, STATE_FILE,
     POLL_INTERVAL, get_messages_for,
+    HERMES_CMD, HERMES_TIMEOUT, HERMES_PREFIXES, HERMES_THINKING_MSG,
 )
-
-# ===== Hermes =====
-HERMES_CMD = "/home/a1/.local/bin/hermes"
-HERMES_TIMEOUT = 120
-HERMES_PREFIXES = ("/hermes ", "❇️ ", "✳️ ")
-HERMES_THINKING_MSG = "⏳ Думаю..."
 
 # ===== Счётчики =====
 seen_ids = set()
@@ -55,7 +50,7 @@ def save_state(state):
 def get_messages():
     url = f"{BASE}/lastIncomingMessages/{API_TOKEN}"
     try:
-        resp = requests.get(url, timeout=30)
+        resp = requests.get(url, timeout=10)
         if resp.status_code == 200:
             try:
                 return resp.json()
@@ -143,6 +138,19 @@ def ask_hermes(chat_id, question, timeout=HERMES_TIMEOUT):
         return None, f"Hermes код {result.returncode}: {err}"
 
     answer = (result.stdout or "").strip()
+
+    # Ловим ошибки LLM, которые Hermes может писать в stdout
+    ERROR_MARKERS = (
+        "API call failed",
+        "Upstream error",
+        "Service temporarily overloaded",
+        "Connection error",
+        "rate limit",
+    )
+    for marker in ERROR_MARKERS:
+        if marker.lower() in answer.lower():
+            return None, f"LLM недоступен: {answer[:200]}"
+
     if not answer:
         return None, "Hermes вернул пустой ответ"
 
@@ -151,11 +159,12 @@ def ask_hermes(chat_id, question, timeout=HERMES_TIMEOUT):
 
 def handle_hermes(chat_id, text):
     """
-    Обрабатывает Hermes-команду.
+    Обрабатывает Hermes-команду от админского чата.
     Возвращает True, если сообщение было обработано как Hermes-команда.
     """
     global total_hermes
 
+    # Проверяем префикс (префиксы содержат пробел на конце)
     prefix = None
     for p in HERMES_PREFIXES:
         if text.startswith(p):
@@ -167,6 +176,7 @@ def handle_hermes(chat_id, text):
 
     question = text[len(prefix):].strip()
 
+    # Пустой вопрос
     if not question:
         send(chat_id, "⚠️ Напиши вопрос после /hermes или ❇")
         total_hermes += 1
@@ -175,7 +185,7 @@ def handle_hermes(chat_id, text):
     # 1. Отправляем "⏳ Думаю..."
     ok, think_id = send(chat_id, HERMES_THINKING_MSG)
 
-    # 2. Запрос к Hermes (блокирующий, до 120 сек)
+    # 2. Запрос к Hermes (блокирующий)
     answer, error = ask_hermes(chat_id, question)
 
     # 3. Готовим финальный текст
@@ -186,12 +196,11 @@ def handle_hermes(chat_id, text):
         final_text = answer
         print(f"[{now_str()}] ✅ Hermes ответил ({len(answer)} симв.)")
 
-    # 4. Редактируем "⏳ Думаю..." в ответ (первая часть)
+    # 4. Редактируем "⏳" в ответ (первая часть до 4000)
     if ok and think_id:
         first_part = final_text[:4000]
         if edit_message(chat_id, think_id, first_part):
             print(f"[{now_str()}] ✏️ отредактировано ({len(first_part)} симв.)")
-            # Остаток — новыми сообщениями
             if len(final_text) > 4000:
                 remainder = final_text[4000:]
                 send_long(chat_id, remainder)
@@ -200,7 +209,6 @@ def handle_hermes(chat_id, text):
             print(f"[{now_str()}] ⚠ fallback: отправляю новым")
             send_long(chat_id, final_text)
     else:
-        # Не получили idMessage от "⏳" — отправляем как есть
         print(f"[{now_str()}] ⚠ нет idMessage от '⏳', отправляю новым")
         send_long(chat_id, final_text)
 
