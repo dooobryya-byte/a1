@@ -15,6 +15,8 @@ from config import (
     SCHEDULE_SHIFT_MIN, SCHEDULE_WINDOW_MIN,
 )
 
+from weather import get_weather   # ⬅️ НОВОЕ: погода напрямую, без Hermes
+
 import db
 
 # ===== TypeID =====
@@ -38,6 +40,7 @@ total_received = 0
 total_sent = 0
 total_skipped = 0
 total_hermes = 0
+total_wishes = 0
 
 # ===== Текст ошибки Hermes =====
 HERMES_ERROR_MSG = "⛔ Возникла ошибка при работе 🤖 Hermes"
@@ -67,11 +70,11 @@ def get_instance_wid():
 def get_messages():
     """
     Входящие сообщения (type=incoming, не от бота).
-    Только за последние 10 минут — чтобы не тянуть историю MAX при чистой БД.
+    Только за последние 10 минут.
     """
     import time as _time
     now_ts = int(_time.time())
-    min_ago = now_ts - 600  # 10 минут
+    min_ago = now_ts - 600
 
     url = f"{BASE}/lastIncomingMessages/{API_TOKEN}"
     try:
@@ -87,7 +90,6 @@ def get_messages():
                     continue
                 if INSTANCE_WID and m.get("senderId") == INSTANCE_WID:
                     continue
-                # Фильтр по времени: только свежие
                 ts = m.get("timestamp", 0)
                 if ts and ts < min_ago:
                     continue
@@ -96,6 +98,7 @@ def get_messages():
     except requests.RequestException as e:
         print(f"[{now_str()}] ⚠ Ошибка запроса: {e}")
     return []
+
 
 def send(chat_id, text):
     """Отправляет сообщение. Возвращает (ok, idMessage)."""
@@ -210,44 +213,35 @@ def run_hermes_shell(command, timeout=HERMES_TIMEOUT):
     return output or err, None
 
 
-def get_weather_for_chat(chat_id):
-    """Запрос погоды по городу из config."""
-    info = ALLOWED_CHATS.get(chat_id, {})
-    city = info.get("city", "").strip()
-    if not city:
-        return None, None
-    return f"/hermes Погода в {city} (skill weather)", city
-
-
 def _send_weather(chat_id):
-    """Отправляет погоду (не пишет в БД)."""
-    weather_question, city = get_weather_for_chat(chat_id)
-    if not weather_question:
+    """
+    Отправляет погоду через weather.py (напрямую, без Hermes).
+    ⬅️ ИЗМЕНЕНО: раньше был вызов ask_hermes с /hermes Погода...
+    """
+    info = ALLOWED_CHATS.get(chat_id, {})
+    city = (info.get("city") or "").strip()
+    if not city:
+        print(f"[{now_str()}] ⏭ погода: у чата {chat_id} не задан city")
         return
 
     print(f"[{now_str()}] 🌤 погода для {chat_id} ({city})")
 
-    answer, error = ask_hermes(chat_id, weather_question)
-
-    if error:
-        print(f"[{now_str()}] ❌ Погода — ошибка: {error}")
+    try:
+        text = get_weather(city)
+    except Exception as e:
+        print(f"[{now_str()}] ❌ Погода — исключение: {e}")
         return
 
-    # Проверка: ответ начинается с города?
-    if not answer.lower().startswith(city.lower()):
-        print(f"[{now_str()}] ⚠ Ответ Hermes не начинается с города '{city}'. "
-              f"Начало: {answer[:80]!r}")
+    if not text:
+        print(f"[{now_str()}] ❌ Погода — не удалось собрать для {city}")
         return
 
-    send(chat_id, answer)
-    print(f"[{now_str()}] ✅ погода отправлена {chat_id}")
+    send(chat_id, text)
+    print(f"[{now_str()}] ✅ погода отправлена {chat_id} ({city})")
 
 
 def _send_aphorism(chat_id):
-    """
-    Отправляет афоризм дня (не пишет в БД).
-    При ошибке — просто пропускает.
-    """
+    """Отправляет афоризм дня (не пишет в БД)."""
     try:
         from send_aphorism import get_aphorism
         aphorism = get_aphorism()
@@ -288,7 +282,6 @@ def handle_incoming(msg):
         total_skipped += 1
         return
 
-    # Уже в БД?
     if db.is_message_exists(chat_id, msg_id):
         print(f"[{now_str()}] ⏭ {chat_id}: уже в БД, пропуск")
         total_skipped += 1
@@ -320,7 +313,7 @@ def handle_incoming(msg):
               f"{last_morning['id_message']} → {msg_id}")
         return
 
-    # === 3. Всё остальное — служебное (вне цикла) ===
+    # === 3. Всё остальное — служебное ===
     print(f"[{now_str()}] ⏭ {chat_id}: вне цикла, ответ не нужен")
     db.insert_message(chat_id, msg_id, text, TYPE_SERVICE)
     total_skipped += 1
@@ -345,86 +338,71 @@ def _link_if_unanswered(chat_id, msg_id):
 def process_type_0_1(chat_id, morning_msg):
     """
     Обрабатывает связку TypeID=0 (утреннее) и TypeID=1 (ответ).
-    Логика:
-    - Есть связка 0 → 1: отправить пожелание (2), связка 1 → 2, погода, афоризм.
-    - Нет связки 0 → 1 и время < alert_hour: ждём.
+    - Есть связка 0 → 1: пожелание (2) + погода + афоризм.
     - Нет связки 0 → 1 и время >= alert_hour: warning (3) + алерт админу (4).
     """
     morning_id = morning_msg["id_message"]
     info = ALLOWED_CHATS.get(chat_id, {})
     name = info.get("name", chat_id)
 
-    # Есть связка 0 → 1?
     rel = db.get_rel_by_for(chat_id, morning_id)
 
     if rel and rel.get("id_message_back"):
-        # Есть связка → смотрим, что за ответ
         answer_msg = db.get_message_by_id(chat_id, rel["id_message_back"])
 
         if answer_msg and answer_msg["type_id"] == TYPE_ANSWER:
-            # Связка 0 → 1 → отправляем пожелание (2)
-            # Но только если связки 1 → 2 ещё нет
             if db.has_rel_by_for(chat_id, rel["id_message_back"]):
-                return  # Уже обработано
-
-            # Проверка времени: сейчас < alert_hour?
-            now = datetime.now()
-            ah = info.get("alert_hour", 12)
-            am = info.get("alert_minute", 0)
-            alert_time = now.replace(hour=ah, minute=am, second=0, microsecond=0)
-
-            if now >= alert_time:
-                print(f"[{now_str()}] ⏭ {chat_id}: ответ после alert_hour, "
-                      f"пожелание не отправляем")
                 return
 
-            # Отправляем пожелание
             pool = get_messages_for(chat_id, "ANSWER_MESSAGES")
+            if not pool:
+                print(f"[{now_str()}] ⚠ {chat_id}: пустой ANSWER_MESSAGES")
+                return
             text = random.choice(pool)
             ok, wish_id = send(chat_id, text)
-            if not ok:
+            if not ok or not wish_id:
                 print(f"[{now_str()}] ⚠ Не удалось отправить пожелание {chat_id}")
                 return
 
-            db.insert_message(chat_id, wish_id or "0", text, TYPE_WISH)
+            db.insert_message(chat_id, wish_id, text, TYPE_WISH)
             db.insert_rel(
                 chat_id=chat_id,
                 id_message_for=rel["id_message_back"],
-                id_message_back=wish_id or "0",
+                id_message_back=wish_id,
             )
+            global total_wishes
+            total_wishes += 1
             print(f"[{now_str()}] 💬 пожелание отправлено {chat_id}")
 
-            # Погода (не пишем в БД)
             _send_weather(chat_id)
-
-            # Афоризм дня (не пишем в БД)
             _send_aphorism(chat_id)
             return
 
-    # Связки 0 → 1 нет → проверяем время
+    # Связки 0 → 1 нет → warning
     now = datetime.now()
     ah = info.get("alert_hour", 12)
     am = info.get("alert_minute", 0)
     alert_time = now.replace(hour=ah, minute=am, second=0, microsecond=0)
 
     if now >= alert_time:
-        # Отправляем warning (TypeID=3)
         pool = get_messages_for(chat_id, "WARNING_MESSAGES")
+        if not pool:
+            print(f"[{now_str()}] ⚠ {chat_id}: пустой WARNING_MESSAGES")
+            return
         text = random.choice(pool)
         ok, warn_id = send(chat_id, text)
-        if not ok:
+        if not ok or not warn_id:
             print(f"[{now_str()}] ⚠ Не удалось отправить warning {chat_id}")
             return
 
-        db.insert_message(chat_id, warn_id or "0", text, TYPE_WARNING)
+        db.insert_message(chat_id, warn_id, text, TYPE_WARNING)
         db.insert_rel(
             chat_id=chat_id,
             id_message_for=morning_id,
-            id_message_back=warn_id or "0",
+            id_message_back=warn_id,
         )
         print(f"[{now_str()}] 🔔 warning отправлен {chat_id}")
 
-        # Сигнал админу (TypeID=4)
         if chat_id != ADMIN_CHAT_ID:
             admin_text = (
                 f"⚠️ {ADMIN_NAME}, привет!\n"
@@ -432,8 +410,8 @@ def process_type_0_1(chat_id, morning_msg):
                 f"Может, стоит проверить, всё ли в порядке? 💛"
             )
             ok, admin_id = send(ADMIN_CHAT_ID, admin_text)
-            if ok:
-                db.insert_message(ADMIN_CHAT_ID, admin_id or "0", admin_text, TYPE_ADMIN_ALERT)
+            if ok and admin_id:
+                db.insert_message(ADMIN_CHAT_ID, admin_id, admin_text, TYPE_ADMIN_ALERT)
                 print(f"[{now_str()}] 📢 алерт админу отправлен")
         else:
             print(f"[{now_str()}] ⏭ {chat_id} — админ, алерт сам себе не шлём")
@@ -441,19 +419,14 @@ def process_type_0_1(chat_id, morning_msg):
 
 def process_type_5(chat_id, req_msg):
     """
-    Обрабатывает запрос к Hermes (TypeID=5):
-    1. Отправляет ⏳ (TypeID=7).
-    2. Запускает Hermes в отдельном потоке.
-    3. После ответа — корректирует ⏳ → ответ (TypeID=8).
+    Обрабатывает запрос к Hermes (TypeID=5).
     """
     req_id = req_msg["id_message"]
     text = req_msg["message_text"] or ""
 
-    # Связка 5 → 7 уже есть?
     if db.has_rel_by_for(chat_id, req_id):
         return
 
-    # Извлекаем запрос после префикса
     prefix = None
     for p in HERMES_PREFIXES:
         if text.startswith(p):
@@ -465,21 +438,19 @@ def process_type_5(chat_id, req_msg):
 
     question = text[len(prefix):].strip()
 
-    # Отправляем ⏳
     ok, think_id = send(chat_id, HERMES_THINKING_MSG)
-    if not ok:
+    if not ok or not think_id:
         print(f"[{now_str()}] ⚠ Не удалось отправить ⏳ {chat_id}")
         return
 
-    db.insert_message(chat_id, think_id or "0", HERMES_THINKING_MSG, TYPE_HERMES_WAIT)
+    db.insert_message(chat_id, think_id, HERMES_THINKING_MSG, TYPE_HERMES_WAIT)
     db.insert_rel(
         chat_id=chat_id,
         id_message_for=req_id,
-        id_message_back=think_id or "0",
+        id_message_back=think_id,
     )
     print(f"[{now_str()}] ⏳ ожидание Hermes {chat_id}")
 
-    # Запускаем Hermes в отдельном потоке
     t = threading.Thread(
         target=_run_hermes_and_edit,
         args=(chat_id, req_id, think_id, question),
@@ -492,7 +463,6 @@ def _run_hermes_and_edit(chat_id, req_id, think_id, question):
     """Фоновый поток: Hermes → ответ → editMessage ⏳ → ответ."""
     global total_hermes
 
-    # Проверка: команда или запрос?
     if question.startswith("-command "):
         shell_cmd = question[len("-command "):].strip()
         answer, error = run_hermes_shell(shell_cmd)
@@ -508,28 +478,28 @@ def _run_hermes_and_edit(chat_id, req_id, think_id, question):
         final_text = answer
         print(f"[{now_str()}] ✅ Hermes ответил ({len(answer)} симв.)")
 
-    # Пытаемся отредактировать ⏳
     if think_id:
         first_part = final_text[:4000]
         if edit_message(chat_id, think_id, first_part):
             db.update_message_text(chat_id, think_id, first_part)
-            db.insert_message(chat_id, "0", final_text, TYPE_HERMES_ANSWER)
+            db.insert_message(chat_id, f"{think_id}_ans", final_text, TYPE_HERMES_ANSWER)
             db.insert_rel(
                 chat_id=chat_id,
                 id_message_for=think_id,
-                id_message_back="0",
+                id_message_back=f"{think_id}_ans",
             )
             print(f"[{now_str()}] ✏️ отредактировано")
             if len(final_text) > 4000:
                 send_long(chat_id, final_text[4000:])
         else:
             new_id = send_long(chat_id, final_text)
-            db.insert_message(chat_id, new_id or "0", final_text, TYPE_HERMES_ANSWER)
-            db.insert_rel(
-                chat_id=chat_id,
-                id_message_for=think_id,
-                id_message_back=new_id or "0",
-            )
+            if new_id:
+                db.insert_message(chat_id, new_id, final_text, TYPE_HERMES_ANSWER)
+                db.insert_rel(
+                    chat_id=chat_id,
+                    id_message_for=think_id,
+                    id_message_back=new_id,
+                )
             print(f"[{now_str()}] ⚠ fallback: новым сообщением")
 
 
@@ -544,12 +514,10 @@ def daily_worker():
             today_start = f"{today} 00:00:00"
 
             for chat_id, info in ALLOWED_CHATS.items():
-                # Уже слали сегодня?
                 existing = db.get_last_by_type(chat_id, TYPE_MORNING, since_datetime=today_start)
                 if existing:
                     continue
 
-                # Пора слать?
                 mh = info.get("morning_hour", 9)
                 mm = info.get("morning_minute", 0)
                 target = now.replace(hour=mh, minute=mm, second=0, microsecond=0)
@@ -558,10 +526,12 @@ def daily_worker():
                 delta_min = (now - target).total_seconds() / 60
                 if 0 <= delta_min < SCHEDULE_WINDOW_MIN:
                     pool = get_messages_for(chat_id, "DAILY_QUESTION_MESSAGES")
+                    if not pool:
+                        continue
                     text = random.choice(pool)
                     ok, msg_id = send(chat_id, text)
-                    if ok:
-                        db.insert_message(chat_id, msg_id or "0", text, TYPE_MORNING)
+                    if ok and msg_id:
+                        db.insert_message(chat_id, msg_id, text, TYPE_MORNING)
                         print(f"[{now_str()}] ☀️ утреннее отправлено {chat_id}")
                     else:
                         print(f"[{now_str()}] ⚠ Не удалось отправить утреннее {chat_id}")
@@ -593,6 +563,31 @@ def alert_worker():
             time.sleep(60)
 
 
+def wish_worker():
+    """
+    Отправляет пожелание (TypeID=2) тем, кто ответил на утреннее (0 → 1),
+    но ещё не получил пожелание (нет связки 1 → 2).
+    """
+    while True:
+        try:
+            pairs = db.get_answer_pairs_without_wish()
+            for pair in pairs:
+                chat_id = pair["chat_id"]
+                morning_id = pair["morning_id"]
+                morning_msg = db.get_message_by_id(chat_id, morning_id)
+                if not morning_msg:
+                    continue
+                try:
+                    process_type_0_1(chat_id, morning_msg)
+                except Exception as e:
+                    print(f"[{now_str()}] ⚠ wish_worker process error "
+                          f"({chat_id}): {e}")
+            time.sleep(30)
+        except Exception as e:
+            print(f"[{now_str()}] ⚠ wish_worker error: {e}")
+            time.sleep(30)
+
+
 def hermes_worker():
     """Обработка запросов к Hermes (TypeID=5). Каждые 5 секунд."""
     while True:
@@ -617,8 +612,10 @@ def heartbeat():
         h, m = divmod(m, 60)
         print(f"[{now_str()}] ♥ работает | uptime: {h:02d}:{m:02d}:{s:02d} "
               f"| получено: {total_received} | отправлено: {total_sent} "
-              f"| пропущено: {total_skipped} | hermes: {total_hermes}")
+              f"| пропущено: {total_skipped} | hermes: {total_hermes} "
+              f"| wishes: {total_wishes}")
         last_heartbeat = now
+
 
 # ==================== HERMES STATUS ====================
 
@@ -656,20 +653,21 @@ def print_hermes_status():
     except Exception as e:
         print(f"[{now_str()}] ⚠ Hermes status: {e}")
 
+
 # ==================== MAIN ====================
 
 def main():
-    global INSTANCE_WID, total_received, total_skipped
+    global INSTANCE_WID
 
     INSTANCE_WID = get_instance_wid()
     print(f"[{now_str()}] 📱 Instance WID: {INSTANCE_WID}")
     print(f"[{now_str()}] 🚀 Бот запущен. Чаты: {list(ALLOWED_CHATS.keys())}")
     print(f"[{now_str()}] 🤖 Hermes-команды от чата: {ADMIN_CHAT_ID}")
     print(f"[{now_str()}] Префиксы: {' | '.join(HERMES_PREFIXES)}")
-    
+
     print_hermes_status()
 
-    # Запускаем воркеры в фоне
+    # Воркеры
     t_daily = threading.Thread(target=daily_worker, daemon=True)
     t_daily.start()
     print(f"[{now_str()}] ☀️ daily_worker запущен")
@@ -678,11 +676,15 @@ def main():
     t_alert.start()
     print(f"[{now_str()}] 🔔 alert_worker запущен")
 
+    t_wish = threading.Thread(target=wish_worker, daemon=True)
+    t_wish.start()
+    print(f"[{now_str()}] 💬 wish_worker запущен")
+
     t_hermes = threading.Thread(target=hermes_worker, daemon=True)
     t_hermes.start()
     print(f"[{now_str()}] 🤖 hermes_worker запущен")
 
-    # Основной цикл: входящие сообщения
+    # Основной цикл
     while True:
         for msg in get_messages():
             try:
