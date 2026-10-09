@@ -16,6 +16,7 @@ ALLOWED_CHATS = {
         "morning_hour": 7,
         "morning_minute": 0,
         "alert_hour": 11,
+        "city": "Your_0000000",
         "alert_minute": 0,
     },
     "1111111": {
@@ -24,6 +25,7 @@ ALLOWED_CHATS = {
         "morning_hour": 8,
         "morning_minute": 0,
         "alert_hour": 12,
+        "city": "Your_1111111",
         "alert_minute": 0,
     },
 }

@@ -2,7 +2,7 @@
 import random
 import re
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 
 from config import BASE, API_TOKEN, ALLOWED_CHATS
@@ -23,7 +23,6 @@ def build_url(date=None):
 def fetch_aphorisms(url):
     """Скачивает страницу и вытаскивает список афоризмов."""
     headers = {
-        # без User-Agent anekdot.ru может отдать пустую страницу
         "User-Agent": (
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
@@ -36,17 +35,14 @@ def fetch_aphorisms(url):
         return []
 
     soup = BeautifulSoup(resp.text, "lxml")
-
     aphorisms = []
 
     # Афоризмы на anekdot.ru лежат в блоках div.topicbox.
-    # Внутри — div.text с самим текстом.
     for block in soup.select("div.topicbox"):
         text_div = block.select_one("div.text")
         if not text_div:
             continue
 
-        # Убираем ссылки, рейтинги, "Поделиться" и т.д. — оставляем только текст
         for tag in text_div.select("a, script, style"):
             tag.decompose()
 
@@ -71,6 +67,30 @@ def fetch_aphorisms(url):
             aphorisms.append(clean)
 
     return aphorisms
+
+
+def get_aphorism():
+    """
+    Возвращает один случайный афоризм с anekdot.ru за сегодня.
+    Если страницы за сегодня нет — пробует вчера (до 7 дней назад).
+    Если не удалось — возвращает None.
+    """
+    for delta in range(0, 7):
+        date = datetime.now() - timedelta(days=delta)
+        url = build_url(date)
+        try:
+            aphorisms = fetch_aphorisms(url)
+        except Exception as e:
+            print(f"[{now_str()}] ⚠ fetch_aphorisms error ({url}): {e}")
+            continue
+
+        if aphorisms:
+            if delta > 0:
+                print(f"[{now_str()}] 📖 афоризм с {date.strftime('%d.%m.%Y')}")
+            return random.choice(aphorisms)
+
+    print(f"[{now_str()}] ⚠ Не удалось получить афоризм за 7 дней")
+    return None
 
 
 def send(chat_id, text):
@@ -98,8 +118,6 @@ def main():
 
     print(f"[{now_str()}] 📚 Найдено афоризмов: {len(aphorisms)}")
 
-    # Один случайный афоризм на всех — или каждому свой?
-    # Здесь: каждому чату свой случайный.
     for chat_id, info in ALLOWED_CHATS.items():
         name = info["name"]
         aphorism = random.choice(aphorisms)
