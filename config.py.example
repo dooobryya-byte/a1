@@ -1,43 +1,77 @@
 # config.py
+"""
+Конфигурация MAX-бота.
 
-# ===== GREEN-API =====
-ID_INSTANCE = "your_id_here"       # из личного кабинета GREEN-API
-API_TOKEN = "your_api_token_here"    # из личного кабинета GREEN-API
-BASE = f"https://3100.api.green-api.com/waInstance{ID_INSTANCE}"
+Все настройки в одном месте:
+  - MAX Bot API (токен, base_url)
+  - Чаты и их параметры (утренние, alert, город)
+  - Hermes (модель, timeout, префиксы)
+  - Тексты (утренние, пожелания, warnings) — с гендерным разделением
+  - Расписание (окно рассылки)
+"""
 
-# ===== ЧАТЫ =====
-# chatId → параметры чата.
-# gender: "m" (мужской), "f" (женский).
-# Время в 24-часовом формате, только *:00 (таймер запускается раз в час).
-ALLOWED_CHATS = {
-    "0000000": {
-        "name": "Имя",
-        "gender": "m",
-        "morning_hour": 7,
+# ==================== MAX Bot API ====================
+
+# Токен бота MAX (получается в кабинете MAX: Чат-боты → ваш бот → Настройки)
+MAX_BOT_TOKEN = "your_api_token_here"
+
+# Базовый URL MAX Bot API
+MAX_API_BASE = "https://platform-api2.max.ru"
+
+# Таймаут HTTP-запросов к MAX (connect, read)
+MAX_API_TIMEOUT = (5, 30)
+
+# Poll: типы обновлений, которые слушаем
+MAX_POLL_TYPES = ["message_created", "message_callback"]
+
+# Poll: таймаут одного цикла (сек)
+MAX_POLL_TIMEOUT = 30
+
+# Poll: лимит сообщений за цикл
+MAX_POLL_LIMIT = 100
+
+# Разрешённые чаты: chatId → {name, gender}
+# gender: "m" — мужской, "f" — женский
+ALLOWED_CHATS    = {
+    "Your_User_id1": {
+        "name": "Your_name1", 
+        "gender": "m",          # m - Male, f -Female
+        "morning_hour": 9,      # во сколько утренний вопрос
         "morning_minute": 0,
-        "alert_hour": 11,
-        "city": "Your_0000000",
-        "alert_minute": 0,
-    },
-    "1111111": {
-        "name": "Имя",
-        "gender": "f",
-        "morning_hour": 8,
+        "alert_hour": 13,       # во сколько warning, если не ответил
+        "city": "Your_City_Name1",
+        "chat_id": 123,
+      "alert_minute": 0
+        },
+    "Your_User_id2": {
+        "name": "Your_name2", 
+        "gender": "f",          # m - Male, f -Female
+        "morning_hour": 11,     # во сколько утренний вопрос
         "morning_minute": 0,
-        "alert_hour": 12,
-        "city": "Your_1111111",
-        "alert_minute": 0,
-    },
+        "alert_hour": 15,       # во сколько warning, если не ответил
+        "city": "Your_City_Name2",
+        "chat_id": 321,
+      "alert_minute": 0
+        },
+    "Your_User_id3": {
+        "name": "Your_name2", 
+        "gender": "f",          # m - Male, f -Female
+        "morning_hour": 7,     # во сколько утренний вопрос
+        "morning_minute": 0,
+        "alert_hour": 11,       # во сколько warning, если не ответил
+        "city": "Your_City_Name3",
+        "chat_id": 456,
+      "alert_minute": 0
+        },
 }
-
 
 # ===== HERMES =====
 # Полный путь к исполняемому файлу hermes.
 # Узнать: which hermes
-HERMES_CMD = "/home/user/.local/bin/hermes"
+HERMES_CMD = "/home/a1/.local/bin/hermes"
 
 # Таймаут ожидания ответа от Hermes (секунд).
-HERMES_TIMEOUT = 180
+HERMES_TIMEOUT = 500
 
 # Префиксы для команд Hermes.
 # Пользователь пишет: "/hermes <вопрос>" или "❇ <вопрос>".
@@ -46,17 +80,20 @@ HERMES_PREFIXES = ("/hermes ", "❇️ ", "✳️ ")
 # Текст сообщения-заглушки, которое показывается, пока Hermes думает.
 HERMES_THINKING_MSG = "⏳ Думаю..."
 
-# ===== АДМИН =====
-# Чат, куда уходит сводка о молчунах и куда принимаются Hermes-команды.
-ADMIN_CHAT_ID = "0000000"
-ADMIN_NAME = "Имя"
+## Админ — получает сводку о молчунах
+ADMIN_CHAT_ID = "000000"
+ADMIN_NAME = "Your_Admin_name"
 
 # ===== РАСПИСАНИЕ =====
-SCHEDULE_SHIFT_MIN = 2       # сдвиг «в прошлое» для защиты от раннего запуска
-SCHEDULE_WINDOW_MIN = 60     # окно срабатывания (минут)
+# Сдвиг «в прошлое» (мин): защита от раннего запуска таймера.
+SCHEDULE_SHIFT_MIN = 0
+
+# Окно срабатывания (мин): «пора», если с цели прошло < 60.
+SCHEDULE_WINDOW_MIN = 60
 
 # ===== ПОЛЛИНГ =====
-POLL_INTERVAL = 60           # частота опроса GREEN-API (секунд)
+POLL_INTERVAL = 60
+
 STATE_FILE = "state.json"
 
 

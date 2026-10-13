@@ -1,9 +1,40 @@
+# База данных и состояние
+*.db
+*.db-wal
+*.db-shm
+*.db.backup_*
+*.db.bak-*
+state.json
+state.db
+all_chats.html
+
+# IDE
+.vscode/
+.idea/
+
+# Временные
+tmp/
+*.tmp
+
+# Бэкапы
+*.bak
+*.bak-*
+*.backup_*
+# === Секреты ===
+config.py
+config_local.py
+.env
+.env.*
+
+# === Python ===
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
-*.log
-.env
-config.py
-bot_state.db
-.DS_Store
+
+# === Старое ===
+old_scripts/
+
+# === Исключение: шаблон конфига ===
+!config.py.example

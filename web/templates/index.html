@@ -1,0 +1,656 @@
+{% extends "base.html" %}
+{% block title %}📬 MAX Bot — просмотр чатов{% endblock %}
+
+{% block content %}
+<div class="sidebar">
+    <div class="sidebar-header">📬 Чаты ({{ chats|length }})</div>
+    {% for c in chats %}
+    <a href="{{ root_path }}/chat/{{ c.user_id }}" class="chat-item {% if active_chat and c.user_id == active_chat.user_id %}active{% endif %} {% if c.user_id == admin_chat_id %}chat-item-admin{% endif %}">
+        <div class="avatar {% if c.user_id == admin_chat_id %}avatar-admin{% endif %}">{{ initials(c.name) }}</div>
+        <div class="chat-info">
+            <div class="chat-name">
+                {{ c.name }}
+                {% if c.user_id == admin_chat_id %}<span class="admin-badge" title="Админ">👑</span>{% endif %}
+            </div>
+            <div class="chat-meta">{{ c.city or '' }} · {{ c.msg_count }} сообщ.</div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+
+<div class="content">
+    {% if active_chat %}
+    <div class="content-header">
+        <div class="content-header-left">
+            <div class="content-name">
+                {{ active_chat.name }}
+                {% if active_chat.user_id == admin_chat_id %}<span class="admin-badge" title="Админ">👑</span>{% endif %}
+            </div>
+            <div class="content-meta">user_id={{ active_chat.user_id }}{% if active_chat.chat_id %} · chat_id={{ active_chat.chat_id }}{% endif %} · {{ messages|length }} сообщений</div>
+        </div>
+        <button class="sync-btn" onclick="syncChat('{{ active_chat.user_id }}')" title="Синхронизировать с MAX">
+            🔄 Синхронизировать
+        </button>
+    </div>
+
+    <div class="content-body" id="content-body">
+        {% for m in messages %}
+        <div class="msg {{ 'user' if m.direction == 'in' else 'bot' }}"
+             data-mid="{{ m.mid or '' }}"
+             data-direction="{{ m.direction }}"
+             data-author="{{ m.author or '' }}">
+            <div class="bubble">
+                <div class="sender">{% if m.direction == 'out' %}{% if m.author == 'admin' %}👤 админ{% else %}🤖 бот{% endif %}{% else %}{{ active_chat.name }}{% endif %}</div>
+                {% if m.text %}
+                <div class="text">{{ m.text }}</div>
+                {% endif %}
+                {% if m.attachments %}
+                <div class="attachments">
+                    {% for att in m.attachments|fromjson %}
+                        {% if att.type == 'image' and att.url %}
+                            <a href="{{ att.url }}" target="_blank" class="attachment-image">
+                                <img src="{{ att.url }}" alt="{{ att.filename or 'image' }}" loading="lazy">
+                            </a>
+                        {% elif att.type == 'image' %}
+                            <div class="attachment-file">🖼 {{ att.filename or 'изображение' }}</div>
+                        {% elif att.type == 'file' and att.url %}
+                            <a href="{{ att.url }}" target="_blank" class="attachment-file"
+                               rel="noopener noreferrer" download="{{ att.filename or 'file' }}">
+                                📄 {{ att.filename or 'файл' }}
+                            </a>
+                        {% elif att.type == 'file' %}
+                            <div class="attachment-file">📄 {{ att.filename or 'файл' }}</div>
+                        {% elif att.type == 'video' and att.url %}
+                            <a href="{{ att.url }}" target="_blank" class="attachment-file" rel="noopener noreferrer">
+                                🎬 {{ att.filename or 'видео' }}
+                            </a>
+                        {% elif att.type == 'video' %}
+                            <div class="attachment-file">🎬 {{ att.filename or 'видео' }}</div>
+                        {% elif att.type == 'audio' and att.url %}
+                            <a href="{{ att.url }}" target="_blank" class="attachment-file" rel="noopener noreferrer">
+                                🎵 {{ att.filename or 'аудио' }}
+                            </a>
+                        {% elif att.type == 'audio' %}
+                            <div class="attachment-file">🎵 {{ att.filename or 'аудио' }}</div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                {% endif %}
+                <div class="footer">
+                    <span class="time" title="{{ m.created_at }}">{{ format_dt(m.created_at) }}</span>{% if m.edited_at %}<span class="edited" title="Изменено {{ m.edited_at }}">изм.</span>{% endif %}{% if m.mid %}<span class="mid" title="{{ m.mid }}" onclick="copyMid(this)" data-mid="{{ m.mid }}">{{ m.mid }}</span>
+                    <button class="msg-menu-btn" onclick="showMenu(event, this)" title="Меню">⋮</button>{% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <form class="send-form" id="send-form" method="post" action="{{ root_path }}/chat/{{ active_chat.user_id }}/send" enctype="multipart/form-data">
+        <div class="send-frame" id="send-frame">
+            <div class="edit-header" id="edit-header" style="display: none;">
+                <div class="edit-title">✏️ Редактирование</div>
+                <button type="button" class="cancel-edit-btn" onclick="cancelEditMode()" title="Отмена">✖</button>
+            </div>
+            <div class="edit-quote" id="edit-quote" style="display: none;"></div>
+
+            <!-- Превью вложения -->
+            <div class="attach-preview" id="attach-preview" style="display: none;">
+                <div class="attach-preview-icon" id="attach-preview-icon">📎</div>
+                <div class="attach-preview-name" id="attach-preview-name">filename.jpg</div>
+                <button type="button" class="attach-preview-remove" onclick="removeAttachment()" title="Убрать файл">✖</button>
+            </div>
+
+            <div class="send-row">
+                <input type="file" id="file-input" style="display: none;" onchange="onFileSelected(this)">
+                <button type="button" id="attach-btn" class="attach-btn" onclick="document.getElementById('file-input').click()" title="Прикрепить файл">📎</button>
+                <textarea name="text" id="send-input" class="send-input" placeholder="Написать сообщение..." rows="1"></textarea>
+                <button type="button" id="emoji-btn" class="emoji-btn" title="Эмодзи">😊</button>
+            </div>
+        </div>
+        <button type="submit" id="send-btn" class="send-btn" title="Отправить">➤</button>
+        <input type="hidden" id="edit-mid" value="">
+    </form>
+    {% else %}
+    <div class="empty-full">
+        <div>📬</div>
+        <div>Выберите чат слева</div>
+    </div>
+    {% endif %}
+</div>
+<div class="toast" id="toast">Скопировано</div>
+
+<!-- ⬅️ Модалка пересылки -->
+<div class="forward-modal" id="forward-modal" style="display: none;">
+    <div class="forward-modal-backdrop" onclick="closeForwardModal()"></div>
+    <div class="forward-modal-content">
+        <div class="forward-modal-header">
+            <div class="forward-modal-title">↪️ Переслать в...</div>
+            <button type="button" class="forward-modal-close" onclick="closeForwardModal()">✖</button>
+        </div>
+        <div class="forward-modal-list" id="forward-modal-list">
+            <!-- заполняется JS -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _editingMid = null;
+let _emojiPicker = null;
+let _attachedFile = null;
+
+window.addEventListener('load', () => {
+    const body = document.getElementById('content-body');
+    if (body) body.scrollTop = body.scrollHeight;
+
+    const input = document.getElementById('send-input');
+    const form = document.getElementById('send-form');
+
+    if (input) {
+        input.addEventListener('input', () => {
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                form.requestSubmit();
+            }
+            if (e.key === 'Escape' && _editingMid) {
+                e.preventDefault();
+                cancelEditMode();
+            }
+        });
+
+        if (!_editingMid) input.focus();
+    }
+
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (_editingMid) {
+                await saveEdit();
+                return;
+            }
+
+            const text = input.value.trim();
+
+            if (_attachedFile) {
+                await sendWithAttachment(text);
+                return;
+            }
+
+            if (!text) return;
+
+            // Обычная отправка текста (без файла)
+            form.submit();
+        });
+    }
+
+    initEmojiPicker();
+
+    // ⬅️ Подхват текста для пересылки
+    const forwardText = sessionStorage.getItem('forward_text');
+    if (forwardText !== null) {
+        sessionStorage.removeItem('forward_text');
+        const inp = document.getElementById('send-input');
+        if (inp) {
+            inp.value = forwardText;
+            inp.focus();
+            inp.style.height = 'auto';
+            inp.style.height = Math.min(inp.scrollHeight, 160) + 'px';
+        }
+    }
+});
+
+function copyMid(el) {
+    const mid = el.getAttribute('data-mid');
+    if (!mid) return;
+    const toast = document.getElementById('toast');
+    const showToast = () => {
+        toast.textContent = '📋 Скопировано: ' + mid;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 1500);
+    };
+    navigator.clipboard.writeText(mid).then(showToast).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = mid;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); showToast(); } catch (e) {}
+        document.body.removeChild(ta);
+    });
+}
+
+// ═══ Контекстное меню ═══
+
+function showMenu(e, btn) {
+    e.stopPropagation();
+    const old = document.querySelector('.msg-menu');
+    if (old) old.remove();
+
+    const msgEl = btn.closest('.msg');
+    const mid = msgEl.dataset.mid;
+    const direction = msgEl.dataset.direction;
+    const isOut = direction === 'out';
+
+    const menu = document.createElement('div');
+    menu.className = 'msg-menu';
+    menu.dataset.mid = mid;
+    menu.innerHTML =
+        '<div class="msg-menu-item" onclick="copyTextFromMenu(this)">📋 Копировать текст</div>' +
+        '<div class="msg-menu-item" onclick="copyMidFromMenu(this)">📋 Копировать mid</div>' +
+        '<div class="msg-menu-item" onclick="startForward(this)">↪️ Переслать</div>' +
+        (isOut ? '<div class="msg-menu-item" onclick="startEdit(this)">✏️ Редактировать</div>' : '') +
+        (isOut ? '<div class="msg-menu-item msg-menu-danger" onclick="deleteMsg(this)">🗑 Удалить</div>' : '');
+    document.body.appendChild(menu);
+
+    const rect = btn.getBoundingClientRect();
+    menu.style.position = 'fixed';
+
+    const menuWidth = 180;
+    let left = rect.right - menuWidth;
+    if (left < 8) left = 8;
+    if (left + menuWidth > window.innerWidth - 8) {
+        left = window.innerWidth - menuWidth - 8;
+    }
+    menu.style.left = left + 'px';
+
+    const menuHeight = menu.offsetHeight || 150;
+    let top = rect.bottom + 4;
+    if (top + menuHeight > window.innerHeight - 8) {
+        top = rect.top - menuHeight - 4;
+    }
+    menu.style.top = top + 'px';
+
+    setTimeout(() => document.addEventListener('click', closeMenu, { once: true }), 0);
+}
+
+function closeMenu() {
+    const m = document.querySelector('.msg-menu');
+    if (m) m.remove();
+}
+
+function copyTextFromMenu(el) {
+    const mid = el.closest('.msg-menu').dataset.mid;
+    const msgEl = document.querySelector(`.msg[data-mid="${mid}"]`);
+    if (msgEl) {
+        const textEl = msgEl.querySelector('.text');
+        if (textEl) navigator.clipboard.writeText(textEl.textContent);
+    }
+    closeMenu();
+}
+
+function copyMidFromMenu(el) {
+    const mid = el.closest('.msg-menu').dataset.mid;
+    navigator.clipboard.writeText(mid);
+    closeMenu();
+}
+
+// ═══ Удаление ═══
+
+async function deleteMsg(el) {
+    const mid = el.closest('.msg-menu').dataset.mid;
+    closeMenu();
+
+    if (!confirm('Удалить сообщение?')) return;
+
+    try {
+        const resp = await fetch('{{ root_path }}/message/' + encodeURIComponent(mid), {
+            method: 'DELETE',
+        });
+        const data = await resp.json();
+
+        if (data.ok) {
+            const msgEl = document.querySelector(`.msg[data-mid="${mid}"]`);
+            if (msgEl) msgEl.remove();
+        } else {
+            alert('Ошибка: ' + (data.error || 'неизвестная'));
+        }
+    } catch (err) {
+        alert('Ошибка сети: ' + err);
+    }
+}
+
+// ═══ Режим редактирования ═══
+
+function startEdit(el) {
+    const mid = el.closest('.msg-menu').dataset.mid;
+    closeMenu();
+
+    const msgEl = document.querySelector(`.msg[data-mid="${mid}"]`);
+    if (!msgEl) return;
+
+    const textEl = msgEl.querySelector('.text');
+    const text = textEl ? textEl.textContent : '';
+    const firstLine = text.split('\n')[0].slice(0, 80);
+
+    const input = document.getElementById('send-input');
+    const header = document.getElementById('edit-header');
+    const quote = document.getElementById('edit-quote');
+    const editMid = document.getElementById('edit-mid');
+
+    input.value = text;
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+
+    header.style.display = 'flex';
+    quote.textContent = firstLine + (text.length > 80 ? '…' : '');
+    quote.style.display = 'block';
+
+    editMid.value = mid;
+    _editingMid = mid;
+
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+}
+
+function cancelEditMode() {
+    const input = document.getElementById('send-input');
+    const header = document.getElementById('edit-header');
+    const quote = document.getElementById('edit-quote');
+    const editMid = document.getElementById('edit-mid');
+
+    input.value = '';
+    input.style.height = 'auto';
+
+    header.style.display = 'none';
+    quote.style.display = 'none';
+
+    editMid.value = '';
+    _editingMid = null;
+
+    input.focus();
+}
+
+async function saveEdit() {
+    const mid = _editingMid;
+    if (!mid) return;
+
+    const input = document.getElementById('send-input');
+    const newText = input.value.trim();
+    if (!newText) {
+        alert('Текст не может быть пустым');
+        return;
+    }
+
+    const sendBtn = document.getElementById('send-btn');
+    sendBtn.disabled = true;
+    sendBtn.textContent = '⏳';
+
+    try {
+        const formData = new FormData();
+        formData.append('text', newText);
+
+        const resp = await fetch('{{ root_path }}/message/' + encodeURIComponent(mid), {
+            method: 'PUT',
+            body: formData,
+        });
+        const data = await resp.json();
+
+        if (data.ok) {
+            const msgEl = document.querySelector(`.msg[data-mid="${mid}"]`);
+            if (msgEl) {
+                msgEl.querySelector('.text').textContent = newText;
+            }
+            cancelEditMode();
+        } else {
+            alert('Ошибка: ' + (data.error || 'неизвестная'));
+        }
+    } catch (err) {
+        alert('Ошибка сети: ' + err);
+    } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = '➤';
+    }
+}
+
+// ═══ Вложение ═══
+
+function onFileSelected(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    _attachedFile = file;
+
+    const preview = document.getElementById('attach-preview');
+    const nameEl = document.getElementById('attach-preview-name');
+    const iconEl = document.getElementById('attach-preview-icon');
+
+    nameEl.textContent = file.name;
+    iconEl.textContent = file.type.startsWith('image/') ? '🖼' :
+                         file.type.startsWith('video/') ? '🎬' :
+                         file.type.startsWith('audio/') ? '🎵' : '📄';
+
+    preview.style.display = 'flex';
+
+    input.value = '';
+}
+
+function removeAttachment() {
+    _attachedFile = null;
+    const preview = document.getElementById('attach-preview');
+    preview.style.display = 'none';
+}
+
+async function sendWithAttachment(caption) {
+    const sendBtn = document.getElementById('send-btn');
+    const attachBtn = document.getElementById('attach-btn');
+    sendBtn.disabled = true;
+    attachBtn.disabled = true;
+    sendBtn.textContent = '⏳';
+
+    try {
+        const formData = new FormData();
+        formData.append('file', _attachedFile);
+        formData.append('caption', caption);
+
+        const match = window.location.pathname.match(/\/chat\/(\d+)/);
+        const userId = match ? match[1] : null;
+        if (!userId) {
+            alert('Не удалось определить чат');
+            return;
+        }
+
+        const resp = await fetch('{{ root_path }}/chat/' + userId + '/attach', {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await resp.json();
+
+        if (data.ok) {
+            document.getElementById('send-input').value = '';
+            removeAttachment();
+            location.reload();
+        } else {
+            alert('Ошибка: ' + (data.error || 'неизвестная'));
+        }
+    } catch (err) {
+        alert('Ошибка сети: ' + err);
+    } finally {
+        sendBtn.disabled = false;
+        attachBtn.disabled = false;
+        sendBtn.textContent = '➤';
+    }
+}
+
+// ═══ Синхронизация ═══
+
+async function syncChat(userId) {
+    const btn = document.querySelector('.sync-btn');
+    if (!btn) return;
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Синхронизация...';
+
+    try {
+        const resp = await fetch('{{ root_path }}/chat/' + userId + '/sync', {
+            method: 'POST',
+        });
+        const data = await resp.json();
+
+        if (data.ok) {
+            btn.textContent = `✅ Готово (+${data.added} / −${data.marked})`;
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            btn.textContent = '❌ Ошибка';
+            alert('Ошибка: ' + (data.error || 'неизвестная'));
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.textContent = '🔄 Синхронизировать';
+            }, 2000);
+        }
+    } catch (err) {
+        btn.textContent = '❌ Сеть';
+        alert('Ошибка сети: ' + err);
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.textContent = '🔄 Синхронизировать';
+        }, 2000);
+    }
+}
+
+// ═══ Emoji Mart ═══
+
+async function initEmojiPicker() {
+    const emojiBtn = document.getElementById('emoji-btn');
+    if (!emojiBtn) return;
+
+    let emojiData;
+    try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/@emoji-mart/data');
+        emojiData = await resp.json();
+    } catch (e) {
+        console.warn('Emoji Mart data load failed:', e);
+        return;
+    }
+
+    emojiBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+
+        if (_emojiPicker) {
+            _emojiPicker.remove();
+            _emojiPicker = null;
+            return;
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'emoji-picker-wrapper';
+        wrapper.id = 'emoji-picker-wrapper';
+
+        const picker = new EmojiMart.Picker({
+            data: emojiData,
+            locale: 'ru',
+            theme: 'dark',
+            set: 'native',
+            previewPosition: 'none',
+            skinTonePosition: 'none',
+            onEmojiSelect: (emoji) => {
+                insertEmoji(emoji.native);
+            },
+        });
+
+        wrapper.appendChild(picker);
+        document.body.appendChild(wrapper);
+        _emojiPicker = wrapper;
+
+        const btnRect = emojiBtn.getBoundingClientRect();
+        wrapper.style.position = 'fixed';
+        wrapper.style.bottom = (window.innerHeight - btnRect.top + 8) + 'px';
+        wrapper.style.right = (window.innerWidth - btnRect.right) + 'px';
+        wrapper.style.left = 'auto';
+
+        setTimeout(() => {
+            document.addEventListener('click', function closePicker(ev) {
+                if (_emojiPicker && !_emojiPicker.contains(ev.target) && ev.target !== emojiBtn) {
+                    _emojiPicker.remove();
+                    _emojiPicker = null;
+                    document.removeEventListener('click', closePicker);
+                }
+            });
+        }, 0);
+    });
+}
+
+function insertEmoji(emoji) {
+    const input = document.getElementById('send-input');
+    if (!input) return;
+
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const text = input.value;
+
+    input.value = text.slice(0, start) + emoji + text.slice(end);
+    input.selectionStart = input.selectionEnd = start + emoji.length;
+    input.focus();
+
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+}
+
+// ═══ Пересылка ═══
+
+const FORWARD_CHATS = {{ allowed_chats | tojson }};
+let _forwardText = null;
+let _forwardMid = null;
+
+function startForward(el) {
+    const menu = el.closest('.msg-menu');
+    const mid = menu.dataset.mid;
+    const msgEl = document.querySelector(`.msg[data-mid="${mid}"]`);
+    closeMenu();
+
+    if (!msgEl) return;
+
+    const textEl = msgEl.querySelector('.text');
+    _forwardText = textEl ? textEl.textContent : '';
+    _forwardMid = mid;
+
+    openForwardModal();
+}
+
+function openForwardModal() {
+    const modal = document.getElementById('forward-modal');
+    const list = document.getElementById('forward-modal-list');
+
+    if (!FORWARD_CHATS.length) {
+        list.innerHTML = '<div class="forward-modal-empty">Нет других чатов</div>';
+    } else {
+        list.innerHTML = FORWARD_CHATS.map(c => `
+            <div class="forward-modal-item" onclick="selectForwardChat('${c.user_id}')">
+                <div class="forward-avatar">${escapeHtml((c.name || '?').slice(0,2).toUpperCase())}</div>
+                <div class="forward-name">${escapeHtml(c.name)}</div>
+            </div>
+        `).join('');
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeForwardModal() {
+    const modal = document.getElementById('forward-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function selectForwardChat(userId) {
+    const text = _forwardText || '';
+    const rootPath = '{{ root_path }}';
+
+    sessionStorage.setItem('forward_text', text);
+
+    closeForwardModal();
+
+    window.location.href = rootPath + '/chat/' + userId;
+}
+
+function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+}
+</script>
+{% endblock %}

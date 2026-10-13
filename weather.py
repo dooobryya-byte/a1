@@ -388,7 +388,7 @@ def format_message(city: str, data: dict) -> str:
     lines.append(f"🤗 Ощущается: {_num_sign(data.get('feels', '?'))}")
     lines.append(f"☁️ Погода: {(data.get('condition') or '—').lower()}")
     lines.append(f"💨 Ветер: {data.get('wind', '?')} м/с")
-    lines.append(f"💧 Влажность: {data.get('humidity', '?')}")
+    lines.append(f"💧 Влажность: {data.get('humidity', '?')} %")
     lines.append(f"📊 Давление: {data.get('pressure', '?')} мм рт. ст.")
     lines.append("")
 
