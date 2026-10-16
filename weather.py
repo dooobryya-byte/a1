@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
 # weather.py
+#!/usr/bin/env python3
 """
 Погода с Яндекс.Погоды через HTML (без API).
 
@@ -15,6 +15,8 @@
   - защита от __next_error__
   - debug-логи через WEATHER_DEBUG=1
   - кэш координат и slug'ов в памяти
+  - нормализация типографских минусов (− → -), тире (–, —) и word joiner (\u2060)
+  - Прогноз из "Сегодня: ..."
 """
 import json
 import os
@@ -89,7 +91,14 @@ POLLEN_MAP = [
 def _clean(s: str) -> str:
     if not s:
         return ""
-    s = s.replace("\u200b", "").replace("\u2060", "").replace("\xa0", " ")
+    # Невидимые символы
+    s = s.replace("\u200b", "")   # ZERO WIDTH SPACE
+    s = s.replace("\u2060", "")   # WORD JOINER
+    s = s.replace("\xa0", " ")    # NBSP → пробел
+    # Типографские знаки → ASCII
+    s = s.replace("\u2212", "-")  # − MINUS SIGN
+    s = s.replace("\u2013", "-")  # – EN DASH
+    s = s.replace("\u2014", "-")  # — EM DASH
     return re.sub(r"\s+", " ", s).strip()
 
 
@@ -219,7 +228,6 @@ def resolve_slug(city: str) -> str | None:
         return None
 
     # Приоритет 1: GeoID (число) — это ссылка на САМ город
-    # В HTML первое вхождение /pogoda/ru/<geoid> — это текущий город
     m = re.search(r'/pogoda/ru/(\d+)\b', html)
     if m:
         slug = m.group(1)
@@ -242,6 +250,7 @@ def resolve_slug(city: str) -> str | None:
 
     _log(f"[weather] Не нашли slug для '{city}' в HTML")
     return None
+
 
 # ────────────────────────────────────────────────────────────
 #  Парсинг
@@ -282,8 +291,15 @@ def parse_main(html: str, city: str) -> dict:
     m = re.search(r"Влажность (\d+)%", main_text)
     data["humidity"] = m.group(1) if m else "?"
 
-    m = re.search(r"Прогноз погоды на сегодня:\s*([^<]+)", html)
-    data["forecast_today"] = _clean(m.group(1)) if m else ""
+    # ⬅️ Прогноз: "Сегодня: +1…+7°, переменная облачность, без осадков,
+    # слабый ветер 3–4 м/с, порывы до 8 м/с."
+    # Берём ВСЁ после "Сегодня: " до "<".
+    m = re.search(r'Сегодня:\s*([^<]+)', html)
+    if m:
+        forecast = _clean(m.group(1)).rstrip('.')
+        data["forecast_today"] = forecast
+    else:
+        data["forecast_today"] = ""
 
     # --- 2. Почасовой прогноз ---
     hourly_raw = re.findall(
@@ -325,8 +341,26 @@ def parse_main(html: str, city: str) -> dict:
 
 
 def parse_allergies(html: str) -> str:
+    """
+    Парсит пыльцу. Hermes-скилл ищет 'Пыльца в <city>: ...',
+    а не просто 'Пыльца' (которая ловит мусор из JSON).
+    """
     if not html:
         return "нет данных"
+
+    # ⬅️ Ищем "Пыльца в <city>: <значение>"
+    m = re.search(
+        r'[Пп]ыльца в [^:<]+:\s*([^<."]{2,80})',
+        html,
+    )
+    if m:
+        val = _clean(m.group(1))
+        if val and not any(c in val for c in [
+            '\\n', '\\"', 'externalLink', 'action', 'redirect', '{', '}',
+        ]):
+            return normalize_pollen(val)
+
+    # Fallback: старые regex, но с защитой
     patterns = [
         r"([А-Яа-я ,]+не раздражает[А-Яа-я ,]*)",
         r"(Нет риска аллергии)",
@@ -335,21 +369,38 @@ def parse_allergies(html: str) -> str:
         r"(Высокий риск)",
         r"(Очень высокий риск)",
         r"(Умеренный риск)",
-        r"риск аллергии[:\s]+([^<.]+)",
-        r"[Пп]ыльца[^<.]*?[:\s]+([^<.]+)",
     ]
     for pat in patterns:
         m = re.search(pat, html, re.IGNORECASE)
         if m:
             val = _clean(m.group(1))
-            if val:
+            if val and not any(c in val for c in [
+                '\\n', '\\"', 'externalLink', 'action', '{', '}',
+            ]):
                 return val
+
     return "нет данных"
 
 
 def parse_magnetic(html: str) -> str:
+    """
+    Парсит магнитное поле. Hermes-скилл ищет класс
+    AppWellBeingCard_description__subtitle.
+    """
     if not html:
         return "нет данных"
+
+    # ⬅️ Hermes: ищем класс AppWellBeingCard_description__subtitle
+    m = re.search(
+        r'AppWellBeingCard_description__subtitle[^>]*>\s*([^<]+)',
+        html,
+    )
+    if m:
+        val = _clean(m.group(1)).lower()
+        if val:
+            return val
+
+    # Fallback: старые regex
     patterns = [
         r"(спокойное)",
         r"(небольшие возмущения)",
@@ -360,7 +411,6 @@ def parse_magnetic(html: str) -> str:
         r"(слабо возмущённое)",
         r"(возмущённое)",
         r"(магнитная буря)",
-        r"[Мм]агнитное поле[:\s]+([^<.]+)",
     ]
     for pat in patterns:
         m = re.search(pat, html, re.IGNORECASE)
@@ -411,8 +461,6 @@ def format_message(city: str, data: dict) -> str:
 
     forecast = (data.get("forecast_today") or "").strip()
     if forecast:
-        if "·" in forecast:
-            forecast = forecast.split("·")[0].strip()
         lines.append(f"☂️ Прогноз: {forecast}")
 
     return "\n".join(lines).rstrip()

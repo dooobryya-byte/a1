@@ -1,0 +1,117 @@
+{# chat_partial.html — только контент чата, без base.html и sidebar #}
+
+{# Данные для AJAX-навигации (FORWARD_CHATS) #}
+<script type="application/json" id="forward-chats-data">
+{{ allowed_chats | tojson }}
+</script>
+
+<div class="content-header" id="content-header">
+    <button class="menu-toggle" onclick="toggleSidebar()" title="Меню">☰</button>
+    <div class="content-header-left">
+        <div class="content-name">
+            {{ active_chat.name }}
+            {% if active_chat.user_id == admin_chat_id %}<span class="admin-badge" title="Админ">👑</span>{% endif %}
+        </div>
+        <div class="content-meta">user_id={{ active_chat.user_id }}{% if active_chat.chat_id %} · chat_id={{ active_chat.chat_id }}{% endif %} · {{ messages|length }} сообщений</div>
+    </div>
+    <div class="header-actions">
+        <button class="header-btn sync-btn" onclick="syncChat('{{ active_chat.user_id }}')" title="Синхронизировать с MAX">⟳</button>
+        <button class="header-btn fullscreen-btn" id="fullscreen-btn" onclick="toggleFullscreen()" title="На весь экран">⛶</button>
+    </div>
+</div>
+
+<div class="content-body" id="content-body">
+    {% for m in messages %}
+    <div class="msg {{ 'user' if m.direction == 'in' else 'bot' }}"
+        data-id="{{ m.id }}"
+        data-mid="{{ m.mid or '' }}"
+        data-direction="{{ m.direction }}"
+        data-author="{{ m.author or '' }}"
+        data-attachments='{{ m.attachments or "[]" }}'>
+        <div class="bubble">
+            <div class="sender">{% if m.direction == 'out' %}{% if m.author == 'admin' %}👤 админ{% else %}🤖 бот{% endif %}{% else %}{{ active_chat.name }}{% endif %}</div>
+            {% if m.attachments %}
+            <div class="attachments">
+                {% for att in m.attachments|fromjson %}
+                    {% if att.type == 'image' and att.url %}
+                        <a href="{{ att.url }}" target="_blank" class="attachment-image">
+                            <img src="{{ att.url }}" alt="{{ att.filename or 'image' }}" loading="lazy">
+                        </a>
+                    {% elif att.type == 'image' %}
+                        <div class="attachment-file">🖼 {{ att.filename or 'изображение' }}</div>
+                    {% elif att.type == 'file' and att.url %}
+                        <a href="{{ att.url }}" target="_blank" class="attachment-file"
+                           rel="noopener noreferrer" download="{{ att.filename or 'file' }}">
+                            📄 {{ att.filename or 'файл' }}
+                        </a>
+                    {% elif att.type == 'file' %}
+                        <div class="attachment-file">📄 {{ att.filename or 'файл' }}</div>
+                    {% elif att.type == 'video' and att.url %}
+                        <a href="{{ att.url }}" target="_blank" class="attachment-file" rel="noopener noreferrer">
+                            🎬 {{ att.filename or 'видео' }}
+                        </a>
+                    {% elif att.type == 'video' %}
+                        <div class="attachment-file">🎬 {{ att.filename or 'видео' }}</div>
+                    {% elif att.type == 'audio' and att.url %}
+                        <a href="{{ att.url }}" target="_blank" class="attachment-file" rel="noopener noreferrer">
+                            🎵 {{ att.filename or 'аудио' }}
+                        </a>
+                    {% elif att.type == 'audio' %}
+                        <div class="attachment-file">🎵 {{ att.filename or 'аудио' }}</div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if m.text %}
+            <div class="text">{{ m.text }}</div>
+            {% endif %}
+            <div class="footer">
+                <span class="time" title="{{ m.created_at }}">{{ format_dt(m.created_at) }}</span>{% if m.edited_at %}<span class="edited" title="Изменено {{ m.edited_at }}">изм.</span>{% endif %}{% if m.mid %}<span class="mid" title="{{ m.mid }}" onclick="copyMid(this)" data-mid="{{ m.mid }}">{{ m.mid }}</span>
+                <button class="msg-menu-btn" onclick="showMenu(event, this)" title="Меню">⋮</button>{% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<form class="send-form" id="send-form" method="post" action="{{ root_path }}/chat/{{ active_chat.user_id }}/send" enctype="multipart/form-data">
+    <div class="send-frame" id="send-frame">
+        <div class="edit-header" id="edit-header" style="display: none;">
+            <div class="edit-title">✏️ Редактирование</div>
+            <button type="button" class="cancel-edit-btn" onclick="cancelEditMode()" title="Отмена">✖</button>
+        </div>
+        <div class="edit-quote" id="edit-quote" style="display: none;"></div>
+
+        <!-- ⬅️ Список вложений (заполняется JS через renderAttachPreview) -->
+        <div class="attach-preview-list" id="attach-preview-list" style="display: none;"></div>
+
+        <div class="send-row">
+            <input type="file" id="file-input" style="display: none;" multiple onchange="onFilesSelected(this)">
+
+            <button type="button" id="attach-btn" class="attach-btn" onclick="document.getElementById('file-input').value=''; document.getElementById('file-input').click()" title="Прикрепить файл">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                </svg>
+            </button>
+
+            <textarea name="text" id="send-input" class="send-input" placeholder="Написать сообщение..." rows="1"></textarea>
+
+            <button type="button" id="emoji-btn" class="emoji-btn" onclick="toggleEmojiPicker(event)" title="Эмодзи">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9"></circle>
+                    <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                    <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                    <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                </svg>
+            </button>
+
+            <button type="submit" id="send-btn" class="send-btn" title="Отправить">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="12" y1="19" x2="12" y2="5"></line>
+                    <polyline points="5 12 12 5 19 12"></polyline>
+                </svg>
+            </button>
+        </div>
+    </div>
+    <input type="hidden" id="edit-mid" value="">
+</form>

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}📬 MAX Bot — просмотр чатов{% endblock %}
+{% block title %}📬 MAX Bot — консоль{% endblock %}
 
 {% block content %}
 <div class="sidebar">
@@ -18,9 +18,10 @@
     {% endfor %}
 </div>
 
-<div class="content">
+<div class="content" id="content">
     {% if active_chat %}
-    <div class="content-header">
+    <div class="content-header" id="content-header">
+        <button class="menu-toggle" onclick="toggleSidebar()" title="Меню">☰</button>
         <div class="content-header-left">
             <div class="content-name">
                 {{ active_chat.name }}
@@ -28,22 +29,22 @@
             </div>
             <div class="content-meta">user_id={{ active_chat.user_id }}{% if active_chat.chat_id %} · chat_id={{ active_chat.chat_id }}{% endif %} · {{ messages|length }} сообщений</div>
         </div>
-        <button class="sync-btn" onclick="syncChat('{{ active_chat.user_id }}')" title="Синхронизировать с MAX">
-            🔄 Синхронизировать
-        </button>
+        <div class="header-actions">
+            <button class="header-btn sync-btn" onclick="syncChat('{{ active_chat.user_id }}')" title="Синхронизировать с MAX">⟳</button>
+            <button class="header-btn fullscreen-btn" id="fullscreen-btn" onclick="toggleFullscreen()" title="На весь экран">⛶</button>
+        </div>
     </div>
 
     <div class="content-body" id="content-body">
         {% for m in messages %}
         <div class="msg {{ 'user' if m.direction == 'in' else 'bot' }}"
-             data-mid="{{ m.mid or '' }}"
-             data-direction="{{ m.direction }}"
-             data-author="{{ m.author or '' }}">
+            data-id="{{ m.id }}"
+            data-mid="{{ m.mid or '' }}"
+            data-direction="{{ m.direction }}"
+            data-author="{{ m.author or '' }}"
+            data-attachments='{{ m.attachments or "[]" }}'>
             <div class="bubble">
                 <div class="sender">{% if m.direction == 'out' %}{% if m.author == 'admin' %}👤 админ{% else %}🤖 бот{% endif %}{% else %}{{ active_chat.name }}{% endif %}</div>
-                {% if m.text %}
-                <div class="text">{{ m.text }}</div>
-                {% endif %}
                 {% if m.attachments %}
                 <div class="attachments">
                     {% for att in m.attachments|fromjson %}
@@ -76,6 +77,9 @@
                     {% endfor %}
                 </div>
                 {% endif %}
+                {% if m.text %}
+                <div class="text">{{ m.text }}</div>
+                {% endif %}
                 <div class="footer">
                     <span class="time" title="{{ m.created_at }}">{{ format_dt(m.created_at) }}</span>{% if m.edited_at %}<span class="edited" title="Изменено {{ m.edited_at }}">изм.</span>{% endif %}{% if m.mid %}<span class="mid" title="{{ m.mid }}" onclick="copyMid(this)" data-mid="{{ m.mid }}">{{ m.mid }}</span>
                     <button class="msg-menu-btn" onclick="showMenu(event, this)" title="Меню">⋮</button>{% endif %}
@@ -93,23 +97,40 @@
             </div>
             <div class="edit-quote" id="edit-quote" style="display: none;"></div>
 
-            <!-- Превью вложения -->
-            <div class="attach-preview" id="attach-preview" style="display: none;">
-                <div class="attach-preview-icon" id="attach-preview-icon">📎</div>
-                <div class="attach-preview-name" id="attach-preview-name">filename.jpg</div>
-                <button type="button" class="attach-preview-remove" onclick="removeAttachment()" title="Убрать файл">✖</button>
-            </div>
+            <!-- ⬅️ Список вложений (заполняется JS через renderAttachPreview) -->
+            <div class="attach-preview-list" id="attach-preview-list" style="display: none;"></div>
 
             <div class="send-row">
-                <input type="file" id="file-input" style="display: none;" onchange="onFileSelected(this)">
-                <button type="button" id="attach-btn" class="attach-btn" onclick="document.getElementById('file-input').click()" title="Прикрепить файл">📎</button>
+                <input type="file" id="file-input" style="display: none;" multiple onchange="onFilesSelected(this)">
+
+                <button type="button" id="attach-btn" class="attach-btn" onclick="document.getElementById('file-input').value=''; document.getElementById('file-input').click()" title="Прикрепить файл">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                    </svg>
+                </button>
+
                 <textarea name="text" id="send-input" class="send-input" placeholder="Написать сообщение..." rows="1"></textarea>
-                <button type="button" id="emoji-btn" class="emoji-btn" title="Эмодзи">😊</button>
+
+                <button type="button" id="emoji-btn" class="emoji-btn" onclick="toggleEmojiPicker(event)" title="Эмодзи">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9"></circle>
+                        <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                        <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                        <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                    </svg>
+                </button>
+
+                <button type="submit" id="send-btn" class="send-btn" title="Отправить">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <line x1="12" y1="19" x2="12" y2="5"></line>
+                        <polyline points="5 12 12 5 19 12"></polyline>
+                    </svg>
+                </button>
             </div>
         </div>
-        <button type="submit" id="send-btn" class="send-btn" title="Отправить">➤</button>
         <input type="hidden" id="edit-mid" value="">
     </form>
+
     {% else %}
     <div class="empty-full">
         <div>📬</div>
@@ -118,6 +139,9 @@
     {% endif %}
 </div>
 <div class="toast" id="toast">Скопировано</div>
+
+<!-- ⬅️ Overlay для мобильного sidebar -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
 
 <!-- ⬅️ Модалка пересылки -->
 <div class="forward-modal" id="forward-modal" style="display: none;">
@@ -138,23 +162,177 @@
 <script>
 let _editingMid = null;
 let _emojiPicker = null;
-let _attachedFile = null;
+let _attachedFiles = [];
+let _editAttachments = [];
+let _lastMessageId = 0;
+let _autoRefreshTimer = null;
+let _emojiData = null;
+let _emojiSet = 'native';
 
+// ═══ Инициализация при загрузке ═══
 window.addEventListener('load', () => {
     const body = document.getElementById('content-body');
     if (body) body.scrollTop = body.scrollHeight;
 
+    const msgs = document.querySelectorAll('.msg[data-id]');
+    if (msgs.length) {
+        _lastMessageId = parseInt(msgs[msgs.length - 1].dataset.id) || 0;
+    }
+
+    if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+    _autoRefreshTimer = setInterval(checkNewMessages, 15000);
+
+    document.querySelectorAll('.chat-item').forEach(item => {
+        item.addEventListener('click', () => {
+            if (window.innerWidth <= 768) closeSidebar();
+        });
+    });
+
+    attachFormHandlers();
+    loadEmojiData();
+    updateFullscreenButton();
+
+    const inp = document.getElementById('send-input');
+    if (inp && inp.value) {
+        inp.style.height = 'auto';
+        inp.style.height = Math.min(inp.scrollHeight, 160) + 'px';
+    }
+
+    // Восстановление fullscreen после навигации
+    const wasFs = sessionStorage.getItem('was_fullscreen') === '1';
+    if (wasFs) {
+        const restore = () => {
+            const el = document.documentElement;
+            const req = el.requestFullscreen || el.webkitRequestFullscreen
+                || el.mozRequestFullScreen || el.msRequestFullscreen;
+            if (req) req.call(el).catch(() => {});
+            document.removeEventListener('click', restore);
+            document.removeEventListener('touchstart', restore);
+            document.removeEventListener('keydown', restore);
+        };
+        document.addEventListener('click', restore, { once: true, capture: true });
+        document.addEventListener('touchstart', restore, { once: true, capture: true });
+        document.addEventListener('keydown', restore, { once: true, capture: true });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════
+//   КОНТЕКСТНОЕ МЕНЮ (правая кнопка, долгое нажатие)
+// ═══════════════════════════════════════════════════════════
+
+document.addEventListener('contextmenu', (e) => {
+    const bubbleEl = e.target.closest('.bubble');
+    if (!bubbleEl) return;
+
+    const msgEl = bubbleEl.closest('.msg');
+    if (!msgEl) return;
+
+    const mid = msgEl.dataset.mid;
+    if (!mid) return;
+
+    e.preventDefault();
+    showMenuAt(e.clientX, e.clientY, msgEl);
+});
+
+let _longPressTimer = null;
+let _longPressMoved = false;
+
+document.addEventListener('touchstart', (e) => {
+    const msgEl = e.target.closest('.msg');
+    if (!msgEl) return;
+
+    const mid = msgEl.dataset.mid;
+    if (!mid) return;
+
+    _longPressMoved = false;
+    _longPressTimer = setTimeout(() => {
+        if (_longPressMoved) return;
+        const touch = e.touches[0];
+        showMenuAt(touch.clientX, touch.clientY, msgEl);
+    }, 500);
+}, { passive: true });
+
+document.addEventListener('touchend', () => {
+    if (_longPressTimer) {
+        clearTimeout(_longPressTimer);
+        _longPressTimer = null;
+    }
+});
+
+document.addEventListener('touchmove', () => {
+    _longPressMoved = true;
+    if (_longPressTimer) {
+        clearTimeout(_longPressTimer);
+        _longPressTimer = null;
+    }
+});
+
+function detectEmojiSet() {
+    const platform = (navigator.userAgentData?.platform || navigator.platform || '').toLowerCase();
+
+    if (platform.includes('ios') || platform.includes('iphone') || platform.includes('ipad')) {
+        return 'apple';
+    }
+    if (platform.includes('android')) {
+        return 'google';
+    }
+    if (platform.includes('win')) {
+        return 'native';   // Windows: Segoe UI Emoji — системный
+    }
+    if (platform.includes('mac')) {
+        return 'apple';
+    }
+    // Linux и всё остальное — native (Noto Color Emoji, если установлен)
+    return 'native';
+}
+
+async function loadEmojiData() {
+    if (_emojiData) return;
+
+    _emojiSet = detectEmojiSet();
+
+    // native = базовый файл, остальные = через /sets/
+    const url = _emojiSet === 'native'
+        ? 'https://cdn.jsdelivr.net/npm/@emoji-mart/data'
+        : `https://cdn.jsdelivr.net/npm/@emoji-mart/data/sets/14/${_emojiSet}.json`;
+
+    try {
+        const resp = await fetch(url);
+        _emojiData = await resp.json();
+        console.log(`[emoji] набор: ${_emojiSet}`);
+    } catch (e) {
+        console.warn('[emoji] не удалось загрузить:', e);
+        // fallback на native, если apple/google не скачались
+        if (_emojiSet !== 'native') {
+            try {
+                const resp = await fetch('https://cdn.jsdelivr.net/npm/@emoji-mart/data');
+                _emojiData = await resp.json();
+                _emojiSet = 'native';
+            } catch (e2) {
+                console.warn('[emoji] native тоже не загрузился:', e2);
+            }
+        }
+    }
+}
+
+// ═══ Перевешивание обработчиков формы ═══
+function attachFormHandlers() {
     const input = document.getElementById('send-input');
     const form = document.getElementById('send-form');
 
+    // ═══ Textarea ═══
     if (input) {
-        input.addEventListener('input', () => {
-            input.style.height = 'auto';
-            input.style.height = Math.min(input.scrollHeight, 160) + 'px';
-        });
+        input.oninput = function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 160) + 'px';
+        };
 
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+        // Определяем, мобилка ли это
+        const isTouch = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
+        input.onkeydown = function(e) {
+            // Enter отправляет ТОЛЬКО на десктопе (не на touch)
+            if (e.key === 'Enter' && !e.shiftKey && !isTouch) {
                 e.preventDefault();
                 form.requestSubmit();
             }
@@ -162,50 +340,254 @@ window.addEventListener('load', () => {
                 e.preventDefault();
                 cancelEditMode();
             }
-        });
+        };
 
-        if (!_editingMid) input.focus();
+        if (!_editingMid && !isTouch) input.focus();
     }
 
+    // ═══ Form ═══
     if (form) {
-        form.addEventListener('submit', async (e) => {
+        form.onsubmit = async function(e) {
             e.preventDefault();
+            if (_editingMid) { await saveEdit(); return; }
 
-            if (_editingMid) {
-                await saveEdit();
-                return;
-            }
-
-            const text = input.value.trim();
-
-            if (_attachedFile) {
-                await sendWithAttachment(text);
-                return;
-            }
-
+            const inp = document.getElementById('send-input');
+            const text = inp.value.trim();
+            if (_attachedFiles.length > 0) { await sendWithAttachment(text); return; }
             if (!text) return;
-
-            // Обычная отправка текста (без файла)
             form.submit();
+        };
+    }
+}
+
+// ═══ AJAX-навигация между чатами ═══
+async function navigateToChat(userId, pushState = true) {
+    // Сброс режима редактирования
+    if (_editingMid) cancelEditMode();
+
+    // Сброс таймера auto-refresh
+    if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+
+    try {
+        const resp = await fetch(`{{ root_path }}/chat/${userId}/partial`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
-    }
-
-    initEmojiPicker();
-
-    // ⬅️ Подхват текста для пересылки
-    const forwardText = sessionStorage.getItem('forward_text');
-    if (forwardText !== null) {
-        sessionStorage.removeItem('forward_text');
-        const inp = document.getElementById('send-input');
-        if (inp) {
-            inp.value = forwardText;
-            inp.focus();
-            inp.style.height = 'auto';
-            inp.style.height = Math.min(inp.scrollHeight, 160) + 'px';
+        if (!resp.ok) {
+            window.location.href = `{{ root_path }}/chat/${userId}`;
+            return;
         }
+
+        const html = await resp.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        const newHeader = doc.querySelector('.content-header');
+        const newBody = doc.querySelector('.content-body');
+        const newForm = doc.querySelector('.send-form');
+
+        const oldHeader = document.querySelector('.content-header');
+        const oldBody = document.querySelector('.content-body');
+        const oldForm = document.querySelector('.send-form');
+
+        if (oldHeader && newHeader) oldHeader.replaceWith(newHeader);
+        if (oldBody && newBody) oldBody.replaceWith(newBody);
+        if (oldForm && newForm) oldForm.replaceWith(newForm);
+
+        document.querySelectorAll('.chat-item').forEach(el => {
+            const href = el.getAttribute('href');
+            el.classList.toggle('active', href.endsWith('/chat/' + userId));
+        });
+
+        // Обновить FORWARD_CHATS из нового HTML
+        const forwardData = doc.querySelector('#forward-chats-data');
+        if (forwardData) {
+            try {
+                const chats = JSON.parse(forwardData.textContent);
+                window.FORWARD_CHATS = chats;
+                console.log('[nav] FORWARD_CHATS обновлён:', chats.length, 'чатов');
+            } catch (e) {
+                console.warn('[nav] не удалось распарсить FORWARD_CHATS:', e);
+            }
+        }
+
+        if (pushState) {
+            history.pushState({ userId }, '', `{{ root_path }}/chat/${userId}`);
+        }
+
+        _lastMessageId = 0;
+        const msgs = document.querySelectorAll('.msg[data-id]');
+        if (msgs.length) {
+            _lastMessageId = parseInt(msgs[msgs.length - 1].dataset.id) || 0;
+        }
+
+        if (window.innerWidth <= 768) closeSidebar();
+
+        const body = document.getElementById('content-body');
+        if (body) body.scrollTop = body.scrollHeight;
+
+        attachFormHandlers();
+        updateFullscreenButton();
+
+        _autoRefreshTimer = setInterval(checkNewMessages, 15000);
+    } catch (e) {
+        console.error('[navigate] error:', e);
+        window.location.href = `{{ root_path }}/chat/${userId}`;
     }
+}
+
+// Перехват кликов на чат
+document.addEventListener('click', (e) => {
+    const link = e.target.closest('a.chat-item');
+    if (!link) return;
+    e.preventDefault();
+    const href = link.getAttribute('href');
+    const match = href.match(/\/chat\/(\d+)/);
+    if (match) navigateToChat(match[1]);
 });
 
+// Back/forward браузера
+window.addEventListener('popstate', () => {
+    const match = window.location.pathname.match(/\/chat\/(\d+)/);
+    if (match) navigateToChat(match[1], false);
+});
+
+// ═══ Auto-refresh сообщений ═══
+async function checkNewMessages() {
+    if (_editingMid) return;
+
+    const input = document.getElementById('send-input');
+    if (input && input.value.trim().length > 0) return;
+    if (document.querySelector('.msg-menu')) return;
+    if (_emojiPicker) return;
+
+    const fwd = document.getElementById('forward-modal');
+    if (fwd && fwd.style.display !== 'none') return;
+
+    const match = window.location.pathname.match(/\/chat\/(\d+)/);
+    if (!match) return;
+    const userId = match[1];
+
+    try {
+        const resp = await fetch(`{{ root_path }}/chat/${userId}/messages.json?after_id=${_lastMessageId}`);
+        if (!resp.ok) return;
+
+        const data = await resp.json();
+        if (!data.ok || !data.messages || data.messages.length === 0) return;
+
+        console.log(`[auto-refresh] +${data.messages.length} new messages`);
+
+        const body = document.getElementById('content-body');
+        if (!body) return;
+
+        const wasAtBottom = (body.scrollHeight - body.scrollTop - body.clientHeight) < 50;
+
+        for (const m of data.messages) {
+            const msgEl = renderMessage(m);
+            body.appendChild(msgEl);
+            _lastMessageId = Math.max(_lastMessageId, m.id);
+        }
+
+        if (wasAtBottom) body.scrollTop = body.scrollHeight;
+    } catch (e) {
+        console.warn('[auto-refresh] error:', e);
+    }
+}
+
+function renderMessage(m) {
+    const direction = m.direction === 'in' ? 'user' : 'bot';
+    const div = document.createElement('div');
+    div.className = `msg ${direction}`;
+    div.dataset.mid = m.mid || '';
+    div.dataset.id = m.id || 0;
+    div.dataset.direction = m.direction || '';
+    div.dataset.author = m.author || '';
+
+    let senderHtml = '';
+    if (m.direction === 'out') {
+        senderHtml = m.author === 'admin' ? '👤 админ' : '🤖 бот';
+    } else {
+        const nameEl = document.querySelector('.content-name');
+        senderHtml = nameEl ? nameEl.textContent.replace('👑', '').trim() : '—';
+    }
+
+    let textHtml = '';
+    if (m.text) textHtml = `<div class="text">${escapeHtml(m.text)}</div>`;
+
+    let attachHtml = '';
+    if (m.attachments && m.attachments.length) {
+        attachHtml = '<div class="attachments">';
+        for (const att of m.attachments) {
+            if (att.type === 'image' && att.url) {
+                attachHtml += `<a href="${att.url}" target="_blank" class="attachment-image"><img src="${att.url}" alt="${escapeHtml(att.filename || 'image')}" loading="lazy"></a>`;
+            } else if (att.type === 'image') {
+                attachHtml += `<div class="attachment-file">🖼 ${escapeHtml(att.filename || 'изображение')}</div>`;
+            } else if (att.type === 'file' && att.url) {
+                attachHtml += `<a href="${att.url}" target="_blank" class="attachment-file" rel="noopener noreferrer" download="${escapeHtml(att.filename || 'file')}">📄 ${escapeHtml(att.filename || 'файл')}</a>`;
+            } else if (att.type === 'file') {
+                attachHtml += `<div class="attachment-file">📄 ${escapeHtml(att.filename || 'файл')}</div>`;
+            } else if (att.type === 'video' && att.url) {
+                attachHtml += `<a href="${att.url}" target="_blank" class="attachment-file">🎬 ${escapeHtml(att.filename || 'видео')}</a>`;
+            } else if (att.type === 'audio' && att.url) {
+                attachHtml += `<a href="${att.url}" target="_blank" class="attachment-file">🎵 ${escapeHtml(att.filename || 'аудио')}</a>`;
+            }
+        }
+        attachHtml += '</div>';
+    }
+
+    const editedHtml = m.edited_at ? `<span class="edited" title="Изменено">изм.</span>` : '';
+    const midHtml = m.mid
+        ? `<span class="mid" title="${m.mid}" onclick="copyMid(this)" data-mid="${m.mid}">${m.mid}</span><button class="msg-menu-btn" onclick="showMenu(event, this)" title="Меню">⋮</button>`
+        : '';
+
+    div.innerHTML = `
+        <div class="bubble">
+            <div class="sender">${senderHtml}</div>
+            ${attachHtml}
+            ${textHtml}
+            <div class="footer">
+                <span class="time" title="${m.created_at}">${m.created_at_fmt}</span>${editedHtml}${midHtml}
+            </div>
+        </div>
+    `;
+
+    return div;
+}
+
+// ═══ Fullscreen ═══
+function toggleFullscreen() {
+    const el = document.documentElement;
+
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        const req = el.requestFullscreen || el.webkitRequestFullscreen
+            || el.mozRequestFullScreen || el.msRequestFullscreen;
+        if (req) req.call(el).catch(() => {});
+    } else {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen
+            || document.mozCancelFullScreen || document.msExitFullscreen;
+        if (exit) exit.call(document).catch(() => {});
+    }
+}
+
+function updateFullscreenButton() {
+    const btn = document.getElementById('fullscreen-btn');
+    if (!btn) return;
+    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    btn.title = isFs ? 'Выйти из полноэкранного' : 'На весь экран';
+    btn.classList.toggle('active', isFs);
+}
+
+function onFullscreenChange() {
+    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    sessionStorage.setItem('was_fullscreen', isFs ? '1' : '0');
+    updateFullscreenButton();
+}
+
+document.addEventListener('fullscreenchange', onFullscreenChange);
+document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+document.addEventListener('mozfullscreenchange', onFullscreenChange);
+document.addEventListener('MSFullscreenChange', onFullscreenChange);
+
+// ═══ Копирование ═══
 function copyMid(el) {
     const mid = el.getAttribute('data-mid');
     if (!mid) return;
@@ -225,48 +607,133 @@ function copyMid(el) {
     });
 }
 
+// ═══ Mobile sidebar ═══
+function toggleSidebar() {
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (!sidebar) return;
+    sidebar.classList.toggle('open');
+    if (overlay) overlay.classList.toggle('active', sidebar.classList.contains('open'));
+}
+
+function closeSidebar() {
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (sidebar) sidebar.classList.remove('open');
+    if (overlay) overlay.classList.remove('active');
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSidebar();
+});
+
 // ═══ Контекстное меню ═══
-
 function showMenu(e, btn) {
-    e.stopPropagation();
-    const old = document.querySelector('.msg-menu');
-    if (old) old.remove();
-
+    if (e) e.stopPropagation();
     const msgEl = btn.closest('.msg');
+    if (!msgEl) return;
+
+    const rect = btn.getBoundingClientRect();
+    const menu = _buildMenu(msgEl);
+    if (!menu) return;
+
+    _positionMenu(menu, rect.right - 180, rect.bottom + 4);
+    _activateMenuClose();
+}
+
+function showMenuAt(x, y, msgEl) {
+    const menu = _buildMenu(msgEl);
+    if (!menu) return;
+
+    _positionMenu(menu, x, y);
+    _activateMenuClose();
+}
+
+function _buildMenu(msgEl) {
     const mid = msgEl.dataset.mid;
+    if (!mid) return null;
+
     const direction = msgEl.dataset.direction;
     const isOut = direction === 'out';
+
+    // Удалить старое меню
+    const old = document.querySelector('.msg-menu');
+    if (old) old.remove();
 
     const menu = document.createElement('div');
     menu.className = 'msg-menu';
     menu.dataset.mid = mid;
-    menu.innerHTML =
-        '<div class="msg-menu-item" onclick="copyTextFromMenu(this)">📋 Копировать текст</div>' +
-        '<div class="msg-menu-item" onclick="copyMidFromMenu(this)">📋 Копировать mid</div>' +
-        '<div class="msg-menu-item" onclick="startForward(this)">↪️ Переслать</div>' +
-        (isOut ? '<div class="msg-menu-item" onclick="startEdit(this)">✏️ Редактировать</div>' : '') +
-        (isOut ? '<div class="msg-menu-item msg-menu-danger" onclick="deleteMsg(this)">🗑 Удалить</div>' : '');
-    document.body.appendChild(menu);
 
-    const rect = btn.getBoundingClientRect();
+    const items = [
+        {
+            icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>',
+            label: 'Копировать текст',
+            onclick: 'copyTextFromMenu(this)',
+        },
+        {
+            icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>',
+            label: 'Копировать mid',
+            onclick: 'copyMidFromMenu(this)',
+        },
+        {
+            icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>',
+            label: 'Переслать',
+            onclick: 'startForward(this)',
+        },
+    ];
+
+    if (isOut) {
+        items.push({
+            icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>',
+            label: 'Редактировать',
+            onclick: 'startEdit(this)',
+        });
+        items.push({
+            icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
+            label: 'Удалить',
+            onclick: 'deleteMsg(this)',
+            danger: true,
+        });
+    }
+
+    menu.innerHTML = items.map((it, i) => {
+        const isLastBeforeDanger = it.danger && i > 0 && !items[i - 1].danger;
+        const divider = isLastBeforeDanger ? '<div class="msg-menu-divider"></div>' : '';
+        return divider + `
+            <div class="msg-menu-item ${it.danger ? 'msg-menu-danger' : ''}" onclick="${it.onclick}">
+                <span class="msg-menu-icon">${it.icon}</span>
+                <span class="msg-menu-label">${it.label}</span>
+            </div>
+        `;
+    }).join('');
+    
+    document.body.appendChild(menu);
+    return menu;
+}
+
+function _positionMenu(menu, x, y) {
     menu.style.position = 'fixed';
 
     const menuWidth = 180;
-    let left = rect.right - menuWidth;
+    let left = x;
     if (left < 8) left = 8;
-    if (left + menuWidth > window.innerWidth - 8) {
-        left = window.innerWidth - menuWidth - 8;
-    }
+    if (left + menuWidth > window.innerWidth - 8) left = window.innerWidth - menuWidth - 8;
     menu.style.left = left + 'px';
 
     const menuHeight = menu.offsetHeight || 150;
-    let top = rect.bottom + 4;
-    if (top + menuHeight > window.innerHeight - 8) {
-        top = rect.top - menuHeight - 4;
-    }
+    let top = y;
+    if (top + menuHeight > window.innerHeight - 8) top = y - menuHeight;
+    if (top < 8) top = 8;
     menu.style.top = top + 'px';
+}
 
+function _activateMenuClose() {
     setTimeout(() => document.addEventListener('click', closeMenu, { once: true }), 0);
+}
+
+function closeMenu() {
+    const m = document.querySelector('.msg-menu');
+    if (m) m.remove();
 }
 
 function closeMenu() {
@@ -291,32 +758,22 @@ function copyMidFromMenu(el) {
 }
 
 // ═══ Удаление ═══
-
 async function deleteMsg(el) {
     const mid = el.closest('.msg-menu').dataset.mid;
     closeMenu();
-
     if (!confirm('Удалить сообщение?')) return;
 
     try {
-        const resp = await fetch('{{ root_path }}/message/' + encodeURIComponent(mid), {
-            method: 'DELETE',
-        });
+        const resp = await fetch('{{ root_path }}/message/' + encodeURIComponent(mid), { method: 'DELETE' });
         const data = await resp.json();
-
         if (data.ok) {
             const msgEl = document.querySelector(`.msg[data-mid="${mid}"]`);
             if (msgEl) msgEl.remove();
-        } else {
-            alert('Ошибка: ' + (data.error || 'неизвестная'));
-        }
-    } catch (err) {
-        alert('Ошибка сети: ' + err);
-    }
+        } else alert('Ошибка: ' + (data.error || 'неизвестная'));
+    } catch (err) { alert('Ошибка сети: ' + err); }
 }
 
 // ═══ Режим редактирования ═══
-
 function startEdit(el) {
     const mid = el.closest('.msg-menu').dataset.mid;
     closeMenu();
@@ -324,6 +781,19 @@ function startEdit(el) {
     const msgEl = document.querySelector(`.msg[data-mid="${mid}"]`);
     if (!msgEl) return;
 
+    const attsJson = msgEl.dataset.attachments;
+    if (attsJson) {
+        try {
+            _editAttachments = JSON.parse(attsJson);
+        } catch (e) {
+            _editAttachments = [];
+        }
+    } else {
+        _editAttachments = [];
+    }
+    renderAttachPreview();
+
+    
     const textEl = msgEl.querySelector('.text');
     const text = textEl ? textEl.textContent : '';
     const firstLine = text.split('\n')[0].slice(0, 80);
@@ -356,14 +826,27 @@ function cancelEditMode() {
 
     input.value = '';
     input.style.height = 'auto';
-
     header.style.display = 'none';
     quote.style.display = 'none';
-
     editMid.value = '';
     _editingMid = null;
 
+    _editAttachments = [];
+    _attachedFiles = [];
+    renderAttachPreview();
+
     input.focus();
+}
+
+function resetSendButton() {
+    const btn = document.getElementById('send-btn');
+    if (!btn) return;
+    btn.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="12" y1="19" x2="12" y2="5"></line>
+            <polyline points="5 12 12 5 19 12"></polyline>
+        </svg>
+    `;
 }
 
 async function saveEdit() {
@@ -372,99 +855,187 @@ async function saveEdit() {
 
     const input = document.getElementById('send-input');
     const newText = input.value.trim();
-    if (!newText) {
+    const hasAttachments = _editAttachments.length > 0 || _attachedFiles.length > 0;
+
+    if (!newText && !hasAttachments) {
         alert('Текст не может быть пустым');
         return;
     }
 
     const sendBtn = document.getElementById('send-btn');
     sendBtn.disabled = true;
-    sendBtn.textContent = '⏳';
+    sendBtn.classList.add('loading');
+    sendBtn.innerHTML = '<span class="spinner"></span>';
 
     try {
+        // ⬅️ Собираем ВСЕ вложения: существующие токены + новые файлы
         const formData = new FormData();
         formData.append('text', newText);
+        formData.append('existing_tokens', JSON.stringify(_editAttachments));
+        for (const file of _attachedFiles) {
+            formData.append('files', file);
+        }
 
         const resp = await fetch('{{ root_path }}/message/' + encodeURIComponent(mid), {
             method: 'PUT',
             body: formData,
         });
         const data = await resp.json();
-
-        if (data.ok) {
-            const msgEl = document.querySelector(`.msg[data-mid="${mid}"]`);
-            if (msgEl) {
-                msgEl.querySelector('.text').textContent = newText;
-            }
-            cancelEditMode();
-        } else {
+        if (!data.ok) {
             alert('Ошибка: ' + (data.error || 'неизвестная'));
+            return;
         }
+
+        cancelEditMode();
+        const userId = window.location.pathname.split('/').pop();
+        await navigateToChat(userId, false);
     } catch (err) {
         alert('Ошибка сети: ' + err);
     } finally {
         sendBtn.disabled = false;
-        sendBtn.textContent = '➤';
+        sendBtn.classList.remove('loading');
+        resetSendButton();
     }
 }
 
 // ═══ Вложение ═══
 
-function onFileSelected(input) {
-    const file = input.files[0];
-    if (!file) return;
+// ═══════════════════════════════════════════════════════════
+//   ATTACH FILES (множественные вложения)
+// ═══════════════════════════════════════════════════════════
 
-    _attachedFile = file;
+function onFilesSelected(input) {
+    const files = Array.from(input.files || []);
+    if (!files.length) return;
 
-    const preview = document.getElementById('attach-preview');
-    const nameEl = document.getElementById('attach-preview-name');
-    const iconEl = document.getElementById('attach-preview-icon');
+    for (const file of files) {
+        _attachedFiles.push(file);
+    }
 
-    nameEl.textContent = file.name;
-    iconEl.textContent = file.type.startsWith('image/') ? '🖼' :
-                         file.type.startsWith('video/') ? '🎬' :
-                         file.type.startsWith('audio/') ? '🎵' : '📄';
-
-    preview.style.display = 'flex';
-
-    input.value = '';
+    renderAttachPreview();
+    input.value = '';   // сброс — чтобы повторно выбрать тот же файл
 }
 
-function removeAttachment() {
-    _attachedFile = null;
-    const preview = document.getElementById('attach-preview');
-    preview.style.display = 'none';
+function renderAttachPreview() {
+    const list = document.getElementById('attach-preview-list');
+    if (!list) return;
+
+    const total = _editAttachments.length + _attachedFiles.length;
+    if (total === 0) {
+        list.style.display = 'none';
+        list.innerHTML = '';
+        return;
+    }
+
+    list.style.display = 'flex';
+
+    const existingHtml = _editAttachments.map((att, index) => {
+        // ⬅️ Если картинка с url — показываем миниатюру, иначе иконку
+        let preview;
+        if (att.type === 'image' && att.url) {
+            preview = `<img src="${att.url}" alt="" style="width: 28px; height: 28px; border-radius: 4px; object-fit: cover;">`;
+        } else {
+            const icon = att.type === 'image' ? '🖼' :
+                         att.type === 'video' ? '🎬' :
+                         att.type === 'audio' ? '🎵' : '📄';
+            preview = `<div class="attach-preview-icon">${icon}</div>`;
+        }
+
+        return `
+            <div class="attach-preview attach-preview-existing">
+                ${preview}
+                <div class="attach-preview-name">${escapeHtml(att.filename || 'файл')}</div>
+                <div class="attach-preview-size">на сервере</div>
+                <button type="button" class="attach-preview-remove" onclick="removeEditAttachment(${index})" title="Убрать">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+        `;
+    }).join('');
+
+    const newHtml = _attachedFiles.map((file, index) => {
+        const icon = file.type.startsWith('image/') ? '🖼' :
+                     file.type.startsWith('video/') ? '🎬' :
+                     file.type.startsWith('audio/') ? '🎵' : '📄';
+        const size = formatFileSize(file.size);
+        return `
+            <div class="attach-preview">
+                <div class="attach-preview-icon">${icon}</div>
+                <div class="attach-preview-name">${escapeHtml(file.name)}</div>
+                <div class="attach-preview-size">${size}</div>
+                <button type="button" class="attach-preview-remove" onclick="removeAttachment(${index})" title="Убрать">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+        `;
+    }).join('');
+
+    list.innerHTML = existingHtml + newHtml;
+}
+
+function removeEditAttachment(index) {
+    _editAttachments.splice(index, 1);
+    renderAttachPreview();
+}
+
+function removeAttachment(index) {
+    if (index === undefined) {
+        _attachedFiles = [];
+    } else {
+        _attachedFiles.splice(index, 1);
+    }
+    renderAttachPreview();
+}
+
+function clearAttachments() {
+    _attachedFiles = [];
+    renderAttachPreview();
+}
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 }
 
 async function sendWithAttachment(caption) {
+    if (_attachedFiles.length === 0) return;
+
     const sendBtn = document.getElementById('send-btn');
     const attachBtn = document.getElementById('attach-btn');
     sendBtn.disabled = true;
     attachBtn.disabled = true;
-    sendBtn.textContent = '⏳';
+    sendBtn.classList.add('loading');
+    sendBtn.innerHTML = '<span class="spinner"></span>';
 
     try {
         const formData = new FormData();
-        formData.append('file', _attachedFile);
+
+        // ⬅️ Ключевое: цикл + 'files'
+        for (const file of _attachedFiles) {
+            formData.append('files', file);
+        }
         formData.append('caption', caption);
 
         const match = window.location.pathname.match(/\/chat\/(\d+)/);
         const userId = match ? match[1] : null;
-        if (!userId) {
-            alert('Не удалось определить чат');
-            return;
-        }
+        if (!userId) { alert('Не удалось определить чат'); return; }
 
         const resp = await fetch('{{ root_path }}/chat/' + userId + '/attach', {
             method: 'POST',
             body: formData,
         });
         const data = await resp.json();
-
         if (data.ok) {
             document.getElementById('send-input').value = '';
-            removeAttachment();
-            location.reload();
+            clearAttachments();             // ⬅️ очистка всех
+            await navigateToChat(userId, false);
         } else {
             alert('Ошибка: ' + (data.error || 'неизвестная'));
         }
@@ -473,106 +1044,128 @@ async function sendWithAttachment(caption) {
     } finally {
         sendBtn.disabled = false;
         attachBtn.disabled = false;
-        sendBtn.textContent = '➤';
+        sendBtn.classList.remove('loading');
+        resetSendButton();
     }
 }
 
 // ═══ Синхронизация ═══
-
 async function syncChat(userId) {
     const btn = document.querySelector('.sync-btn');
     if (!btn) return;
 
+    // ⬅️ Сохраняем исходное содержимое
     btn.disabled = true;
-    btn.textContent = '⏳ Синхронизация...';
+    btn.classList.add('loading');
+    btn.innerHTML = '<span class="spinner"></span>';
+    // Убираем tooltip на время загрузки
+    btn.removeAttribute('data-tooltip');
 
     try {
-        const resp = await fetch('{{ root_path }}/chat/' + userId + '/sync', {
-            method: 'POST',
-        });
+        const resp = await fetch('{{ root_path }}/chat/' + userId + '/sync', { method: 'POST' });
         const data = await resp.json();
 
+        btn.classList.remove('loading');
+
         if (data.ok) {
-            btn.textContent = `✅ Готово (+${data.added} / −${data.marked})`;
-            setTimeout(() => location.reload(), 1000);
-        } else {
-            btn.textContent = '❌ Ошибка';
-            alert('Ошибка: ' + (data.error || 'неизвестная'));
+            // ⬅️ Возвращаем иконку + показываем tooltip
+            btn.textContent = '⟳';
+            btn.classList.add('success');
+            btn.setAttribute('data-tooltip', `✓ +${data.added} / −${data.marked}`);
+            btn.classList.add('show-tooltip');
+
+            // Убираем tooltip через 3 сек
             setTimeout(() => {
+                btn.classList.remove('show-tooltip');
+                btn.removeAttribute('data-tooltip');
+                btn.classList.remove('success');
                 btn.disabled = false;
-                btn.textContent = '🔄 Синхронизировать';
-            }, 2000);
+                // Обновляем данные чата (без полной навигации)
+                navigateToChat(userId, false);
+            }, 3000);
+        } else {
+            // ⬅️ Ошибка — красная вспышка + tooltip
+            btn.textContent = '✕';
+            btn.classList.add('error');
+            btn.setAttribute('data-tooltip', data.error || 'Ошибка');
+            btn.classList.add('show-tooltip');
+
+            setTimeout(() => {
+                btn.classList.remove('show-tooltip');
+                btn.removeAttribute('data-tooltip');
+                btn.classList.remove('error');
+                btn.textContent = '⟳';
+                btn.disabled = false;
+            }, 3000);
         }
     } catch (err) {
-        btn.textContent = '❌ Сеть';
-        alert('Ошибка сети: ' + err);
+        btn.classList.remove('loading');
+        btn.textContent = '✕';
+        btn.classList.add('error');
+        btn.setAttribute('data-tooltip', 'Ошибка сети');
+        btn.classList.add('show-tooltip');
+
         setTimeout(() => {
+            btn.classList.remove('show-tooltip');
+            btn.removeAttribute('data-tooltip');
+            btn.classList.remove('error');
+            btn.textContent = '⟳';
             btn.disabled = false;
-            btn.textContent = '🔄 Синхронизировать';
-        }, 2000);
+        }, 3000);
     }
 }
 
 // ═══ Emoji Mart ═══
+function toggleEmojiPicker(e) {
+    if (e) e.stopPropagation();
 
-async function initEmojiPicker() {
-    const emojiBtn = document.getElementById('emoji-btn');
-    if (!emojiBtn) return;
-
-    let emojiData;
-    try {
-        const resp = await fetch('https://cdn.jsdelivr.net/npm/@emoji-mart/data');
-        emojiData = await resp.json();
-    } catch (e) {
-        console.warn('Emoji Mart data load failed:', e);
+    if (_emojiPicker) {
+        _emojiPicker.remove();
+        _emojiPicker = null;
         return;
     }
 
-    emojiBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
+    if (!_emojiData) {
+        console.warn('[emoji] данные ещё не загружены');
+        return;
+    }
 
-        if (_emojiPicker) {
-            _emojiPicker.remove();
-            _emojiPicker = null;
-            return;
-        }
+    const btn = document.getElementById('emoji-btn');
+    if (!btn) return;
 
-        const wrapper = document.createElement('div');
-        wrapper.className = 'emoji-picker-wrapper';
-        wrapper.id = 'emoji-picker-wrapper';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'emoji-picker-wrapper';
+    wrapper.id = 'emoji-picker-wrapper';
 
-        const picker = new EmojiMart.Picker({
-            data: emojiData,
-            locale: 'ru',
-            theme: 'dark',
-            set: 'native',
-            previewPosition: 'none',
-            skinTonePosition: 'none',
-            onEmojiSelect: (emoji) => {
-                insertEmoji(emoji.native);
-            },
-        });
-
-        wrapper.appendChild(picker);
-        document.body.appendChild(wrapper);
-        _emojiPicker = wrapper;
-
-        const btnRect = emojiBtn.getBoundingClientRect();
-        wrapper.style.position = 'fixed';
-        wrapper.style.bottom = (window.innerHeight - btnRect.top + 8) + 'px';
-        wrapper.style.right = (window.innerWidth - btnRect.right) + 'px';
-        wrapper.style.left = 'auto';
-
-        setTimeout(() => {
-            document.addEventListener('click', function closePicker(ev) {
-                if (_emojiPicker && !_emojiPicker.contains(ev.target) && ev.target !== emojiBtn) {
-                    _emojiPicker.remove();
-                    _emojiPicker = null;
-                    document.removeEventListener('click', closePicker);
-                }
-            });
-        }, 0);
+    const picker = new EmojiMart.Picker({
+        data: _emojiData,
+        locale: 'ru',
+        theme: 'dark',
+        set: _emojiSet,
+        previewPosition: 'none',
+        skinTonePosition: 'none',
+        onEmojiSelect: (emoji) => insertEmoji(emoji.native),
     });
+
+    wrapper.appendChild(picker);
+    document.body.appendChild(wrapper);
+    _emojiPicker = wrapper;
+
+    const rect = btn.getBoundingClientRect();
+    wrapper.style.position = 'fixed';
+    wrapper.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+    wrapper.style.right = (window.innerWidth - rect.right) + 'px';
+    wrapper.style.left = 'auto';
+
+    setTimeout(() => {
+        document.addEventListener('click', function closePicker(ev) {
+            if (_emojiPicker && !_emojiPicker.contains(ev.target) && ev.target !== btn) {
+                _emojiPicker.remove();
+                _emojiPicker = null;
+                document.removeEventListener('click', closePicker);
+            }
+        });
+    }, 0);
 }
 
 function insertEmoji(emoji) {
@@ -592,8 +1185,9 @@ function insertEmoji(emoji) {
 }
 
 // ═══ Пересылка ═══
-
 const FORWARD_CHATS = {{ allowed_chats | tojson }};
+window.FORWARD_CHATS = FORWARD_CHATS;
+
 let _forwardText = null;
 let _forwardMid = null;
 
@@ -616,10 +1210,13 @@ function openForwardModal() {
     const modal = document.getElementById('forward-modal');
     const list = document.getElementById('forward-modal-list');
 
-    if (!FORWARD_CHATS.length) {
+    // ⬅️ Берём актуальный список
+    const chats = window.FORWARD_CHATS || FORWARD_CHATS || [];
+
+    if (!chats.length) {
         list.innerHTML = '<div class="forward-modal-empty">Нет других чатов</div>';
     } else {
-        list.innerHTML = FORWARD_CHATS.map(c => `
+        list.innerHTML = chats.map(c => `
             <div class="forward-modal-item" onclick="selectForwardChat('${c.user_id}')">
                 <div class="forward-avatar">${escapeHtml((c.name || '?').slice(0,2).toUpperCase())}</div>
                 <div class="forward-name">${escapeHtml(c.name)}</div>
@@ -635,17 +1232,26 @@ function closeForwardModal() {
     if (modal) modal.style.display = 'none';
 }
 
-function selectForwardChat(userId) {
+async function selectForwardChat(userId) {
     const text = _forwardText || '';
-    const rootPath = '{{ root_path }}';
-
-    sessionStorage.setItem('forward_text', text);
-
     closeForwardModal();
 
-    window.location.href = rootPath + '/chat/' + userId;
-}
+    // Навигация (AJAX) — ждём завершения
+    await navigateToChat(userId);
 
+    // ⬅️ Подставляем текст после навигации
+    if (text) {
+        const inp = document.getElementById('send-input');
+        if (inp) {
+            inp.value = text;
+            inp.style.height = 'auto';
+            inp.style.height = Math.min(inp.scrollHeight, 160) + 'px';
+
+            const isTouch = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+            if (!isTouch) inp.focus();
+        }
+    }
+}
 function escapeHtml(s) {
     if (s == null) return '';
     return String(s).replace(/[&<>"']/g, c => ({

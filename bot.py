@@ -50,6 +50,17 @@ def now_str():
     return datetime.now().strftime("%H:%M:%S")
 
 
+def normalize_emoji(s: str) -> str:
+    """
+    Убирает VS16 (U+FE0F) из строки.
+    Делает '❇️' == '❇', '✳️' == '✳', '☀️' == '☀', и т.д.
+    Решает проблему, когда телефон отправляет эмодзи без/с VS16.
+    """
+    if not s:
+        return s
+    return s.replace("\ufe0f", "")
+
+
 # ==================== MAX API ====================
 
 def get_messages():
@@ -91,6 +102,7 @@ def get_messages():
             if str(sender.get("user_id")) == str(recipient.get("user_id")):
                 continue
 
+            # ⬅️ Извлечь attachments
             attachments_raw = body.get("attachments") or []
             attachments_clean = []
             for a in attachments_raw:
@@ -107,7 +119,7 @@ def get_messages():
                 "chatId": str(sender.get("user_id")),
                 "chat_id": str(recipient.get("chat_id")),
                 "textMessage": body.get("text", ""),
-                "attachments": attachments_clean,   # ⬅️ НОВОЕ
+                "attachments": attachments_clean,
                 "senderName": sender.get("name", ""),
                 "senderId": str(sender.get("user_id")),
                 "isBot": sender.get("is_bot", False),
@@ -311,12 +323,6 @@ def handle_incoming(msg):
     msg_id = msg.get("idMessage")
     chat_id = msg.get("chatId")
     text = (msg.get("textMessage") or "").strip()
-    
-    attachments_raw = msg.get("attachments") or []
-    attachments_json = None
-    if attachments_raw:
-        attachments_json = json.dumps(attachments_raw, ensure_ascii=False)
-
     sender_name = msg.get("senderName", "")
 
     if not msg_id or not chat_id:
@@ -337,6 +343,13 @@ def handle_incoming(msg):
         total_skipped += 1
         return
 
+    # ⬅️ Извлечь attachments
+    attachments_raw = msg.get("attachments") or []
+    attachments_json = None
+    if attachments_raw:
+        attachments_json = json.dumps(attachments_raw, ensure_ascii=False)
+        # fallback-текст НЕ ставим — attachments рендерятся отдельно
+
     print(f"[{now_str()}] ← {sender_name} ({chat_id}): {text[:60]}")
 
     if attachments_raw:
@@ -345,19 +358,29 @@ def handle_incoming(msg):
 
     # 1. Запрос к Hermes (только админ, с префиксом)
     if chat_id == ADMIN_CHAT_ID:
+        # ⬅️ Нормализация VS16 (U+FE0F): "❇️" == "❇", "✳️" == "✳"
+        text_norm = normalize_emoji(text)
+        matched_prefix = None
         for prefix in HERMES_PREFIXES:
-            if text.startswith(prefix):
-                db.insert_message(chat_id, msg_id, text, TYPE_HERMES_REQ, attachments=attachments_json)
-                _link_if_unanswered(chat_id, msg_id)
-                print(f"[{now_str()}] 📝 TypeID=5 (запрос к Hermes)")
-                return
+            prefix_norm = normalize_emoji(prefix)
+            if text_norm.startswith(prefix_norm):
+                matched_prefix = prefix
+                break
+
+        if matched_prefix:
+            db.insert_message(chat_id, msg_id, text, TYPE_HERMES_REQ,
+                              attachments=attachments_json)
+            _link_if_unanswered(chat_id, msg_id)
+            print(f"[{now_str()}] 📝 TypeID=5 (запрос к Hermes) — префикс {matched_prefix!r}")
+            return
 
     # 2. Ответ на утреннее приветствие?
     today_start = datetime.now().strftime("%Y-%m-%d 00:00:00")
     last_morning = db.get_last_by_type(chat_id, TYPE_MORNING, since_datetime=today_start)
 
     if last_morning and not db.has_rel_by_for(chat_id, last_morning["mid"]):
-        db.insert_message(chat_id, msg_id, text, TYPE_ANSWER, attachments=attachments_json)
+        db.insert_message(chat_id, msg_id, text, TYPE_ANSWER,
+                          attachments=attachments_json)
         db.insert_rel(
             chat_id=chat_id,
             id_message_for=last_morning["mid"],
@@ -369,7 +392,8 @@ def handle_incoming(msg):
 
     # 3. Всё остальное — служебное
     print(f"[{now_str()}] ⏭ {chat_id}: вне цикла, ответ не нужен")
-    db.insert_message(chat_id, msg_id, text, TYPE_SERVICE, attachments=attachments_json)
+    db.insert_message(chat_id, msg_id, text, TYPE_SERVICE,
+                      attachments=attachments_json)
     total_skipped += 1
 
 
@@ -464,9 +488,12 @@ def process_type_0_1(chat_id, morning_msg):
         print(f"[{now_str()}] 🔔 warning отправлен {chat_id}")
 
         if chat_id != ADMIN_CHAT_ID:
+            gender = info.get("gender", "")
+            verb = "ответила" if str(gender).lower() == "f" else "ответил"
+
             admin_text = (
                 f"⚠️ {ADMIN_NAME}, привет!\n"
-                f"{name} сегодня не ответил(а) на утреннее сообщение.\n"
+                f"{name} сегодня не {verb} на утреннее сообщение.\n"
                 f"Может, стоит проверить, всё ли в порядке? 💛"
             )
             ok, admin_id = send(ADMIN_CHAT_ID, admin_text)
@@ -482,17 +509,22 @@ def process_type_5(chat_id, req_msg):
     if db.has_rel_by_for(chat_id, req_id):
         return
 
-    prefix = None
+    # ⬅️ Нормализация VS16: "❇️" == "❇", "✳️" == "✳"
+    text_norm = normalize_emoji(text)
+    matched_prefix = None
     for p in HERMES_PREFIXES:
-        if text.startswith(p):
-            prefix = p
+        p_norm = normalize_emoji(p)
+        if text_norm.startswith(p_norm):
+            matched_prefix = p_norm
             break
 
-    if not prefix:
+    if not matched_prefix:
+        print(f"[{now_str()}] ⚠ process_type_5: префикс не найден в {text[:40]!r}")
         return
 
-    question = text[len(prefix):].strip()
+    question = text_norm[len(matched_prefix):].strip()
 
+    
     ok, think_id = send(chat_id, HERMES_THINKING_MSG)
     if not ok or not think_id:
         print(f"[{now_str()}] ⚠ ⏳ не отправлен {chat_id} — помечаю failed")
@@ -541,8 +573,6 @@ def _run_hermes_and_edit(chat_id, req_id, think_id, question):
         first_part = final_text[:4000]
         if edit_message(chat_id, think_id, first_part):
             db.update_message_text(chat_id, think_id, first_part)
-            # ⬅️ УБРАЛИ insert_message(_ans) + insert_rel
-            # Связку think_id → ответ НЕ создаём: think_id сам стал ответом
             print(f"[{now_str()}] ✏️ отредактировано (in-place)")
             if len(final_text) > 4000:
                 send_long(chat_id, final_text[4000:])

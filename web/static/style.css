@@ -1,26 +1,44 @@
-# _style.css_
-
+/* style.css */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
     height: 100%;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    height: 100dvh;                    /* dynamic viewport height */
+    width: 100%;
+    max-width: 100vw;
+    overflow: hidden;                  /* ⬅️ убираем скролл */
+    scrollbar-width: none;          /* ⬅️ скрывает скроллбар */
+    -ms-overflow-style: none;       /* ⬅️ IE/Edge */
+font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: #0e1621;
     color: #e0e0e0;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+    /* min-width: 320px;  ⬅️ УБРАНО */
 }
 
-.layout { display: flex; height: 100vh; overflow: hidden; }
+.layout { 
+    display: flex; 
+    height: 100vh; 
+    height: 100dvh;
+    width: 100%;
+    max-width: 100vw;
+    overflow: hidden; 
+    /* min-width: 320px;  ⬅️ УБРАНО */
+}
 
 /* ═══ Sidebar ═══ */
 
 .sidebar {
-    width: 320px;
-    min-width: 320px;
-    background: #17212b;
-    border-right: 1px solid #0a0e14;
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
+    width: clamp(250px, 25vw, 350px);
+    max-width: clamp(250px, 25vw, 350px);
+    flex-shrink: 0;
+    background: #17212b;               /* ⬅️ ВЕРНУЛИ */
+    border-right: 1px solid #0a0e14;   /* ⬅️ ВЕРНУЛИ */
+    display: flex;                     /* ⬅️ ВЕРНУЛИ */
+    flex-direction: column;            /* ⬅️ ВЕРНУЛИ */
+    overflow-y: auto;                  /* ⬅️ ВЕРНУЛИ */
+    box-shadow: none;
 }
 
 .sidebar-header {
@@ -102,7 +120,7 @@ html, body {
     min-width: 0;
 }
 
-/* ═══ Header ═══ */
+/* ═══ Header — ФИКСИРОВАН СВЕРХУ ═══ */
 
 .content-header {
     display: flex;
@@ -113,6 +131,7 @@ html, body {
     border-bottom: 1px solid #0a0e14;
     background: #17212b;
     flex-shrink: 0;
+    z-index: 10;
 }
 
 .content-header-left {
@@ -136,32 +155,68 @@ html, body {
     text-overflow: ellipsis;
 }
 
-.sync-btn {
+/* ═══ Header action buttons (sync + fullscreen) ═══ */
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: auto;             /* ⬅️ прижать к правому краю */
+}
+
+.header-btn {
     background: #2b3a48;
     color: #e0e0e0;
     border: 1px solid #3a4a58;
     border-radius: 8px;
-    padding: 8px 14px;
-    font-size: 13px;
+    padding: 0;
+    font-size: 16px;
     font-family: inherit;
     cursor: pointer;
     flex-shrink: 0;
-    transition: background 0.15s;
-    white-space: nowrap;
+    transition: background 0.15s, transform 0.1s;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    box-sizing: border-box;
 }
 
-.sync-btn:hover:not(:disabled) { background: #3a4a58; }
-.sync-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.header-btn:hover:not(:disabled) {
+    background: #3a4a58;
+}
 
-/* ═══ Body ═══ */
+.header-btn:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.header-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.header-btn.active {
+    background: #2b5278;
+    border-color: #5288c1;
+}
+
+/* ═══ Body — ЕДИНСТВЕННОЕ, ЧТО СКРОЛЛИТСЯ ═══ */
 
 .content-body {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;                     /* ⬅️ КРИТИЧНО для flex */
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 24px;
     display: flex;
     flex-direction: column;
-    min-height: 0;
+    overscroll-behavior: contain;      /* ⬅️ без bounce */
+    -webkit-overflow-scrolling: touch;
 }
 
 /* ═══ Messages ═══ */
@@ -179,26 +234,26 @@ html, body {
     min-width: 0;
 }
 
-.msg.bot .bubble {
-    background: #182533;
-    color: #e0e0e0;
+.msg.bot .bubble { 
+    background: #2b5278; 
+    color: #ffffff;
     border-bottom-left-radius: 3px;
 }
 
-.msg.user .bubble {
-    background: #2b5278;
-    color: #ffffff;
+.msg.user .bubble { 
+    background: #182533; 
+    color: #e0e0e0;
     border-bottom-right-radius: 3px;
 }
 
 .bubble .sender {
     font-size: 11px;
     font-weight: 600;
-    color: #5288c1;
+    color: #a8c8e8;
     margin-bottom: 3px;
 }
 
-.msg.user .bubble .sender { color: #a8c8e8; }
+.msg.user .bubble .sender { color: #5288c1; }
 
 .bubble .text {
     font-size: 14px;
@@ -283,18 +338,17 @@ html, body {
     opacity: 0.5;
 }
 
-/* ═══ Send form ═══ */
+/* ═══ Send form — ФИКСИРОВАН СНИЗУ ═══ */
 
 .send-form {
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
+    display: block;              /* ⬅️ больше не flex */
     padding: 12px 24px;
     border-top: 1px solid #0a0e14;
     background: #17212b;
     flex-shrink: 0;
     width: 100%;
     box-sizing: border-box;
+    z-index: 10;
 }
 
 .send-frame {
@@ -302,13 +356,14 @@ html, body {
     background: #0e1621;
     border: 1px solid #2b3a48;
     border-radius: 22px;
-    padding: 12px 16px;
+    padding: 8px 12px;
     transition: border-color 0.15s;
     box-sizing: border-box;
     min-width: 0;
     min-height: 48px;
     display: flex;
     flex-direction: column;
+    justify-content: flex-end;
 }
 
 .send-frame:focus-within {
@@ -318,28 +373,7 @@ html, body {
 .send-row {
     display: flex;
     align-items: flex-end;
-    gap: 6px;
-}
-
-/* ═══ Emoji button ═══ */
-
-.emoji-btn {
-    background: transparent;
-    border: none;
-    font-size: 20px;
-    cursor: pointer;
-    padding: 0 4px;
-    flex-shrink: 0;
-    line-height: 1;
-    opacity: 0.5;
-    transition: opacity 0.15s, transform 0.1s;
-    box-sizing: border-box;
-    margin-bottom: 2px;
-}
-
-.emoji-btn:hover {
-    opacity: 1;
-    transform: scale(1.1);
+    gap: 4px;
 }
 
 /* ═══ Edit header ═══ */
@@ -380,17 +414,19 @@ html, body {
     background: transparent;
     color: #e0e0e0;
     border: none;
-    padding: 0;
+    padding: 6px 0;
     font-family: inherit;
     font-size: 15px;
     line-height: 1.5;
     resize: none;
     max-height: 160px;
-    min-height: 24px;
+    min-height: 32px;
     outline: none;
     box-sizing: border-box;
     overflow-y: auto;
     scrollbar-width: none;
+    align-self: flex-end;
+    height: auto;
 }
 
 .send-input::-webkit-scrollbar {
@@ -402,29 +438,63 @@ html, body {
 
 .send-input::placeholder { color: #5a6a78; }
 
-/* ═══ Send button ═══ */
+/* ═══ КНОПКИ ═══ */
+
+.attach-btn,
+.emoji-btn,
+.send-btn {
+    background: transparent;
+    color: #7d8b99;
+    border: none;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    line-height: 1;
+    transition: color 0.15s, background 0.15s;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    border-radius: 8px;
+}
+
+.attach-btn svg,
+.emoji-btn svg,
+.send-btn svg {
+    width: 22px;
+    height: 22px;
+    display: block;
+    pointer-events: none;
+}
+
+.attach-btn:hover:not(:disabled),
+.emoji-btn:hover,
+.send-btn:hover {
+    color: #e0e0e0;
+    background: #2b3a48;
+}
+
+.attach-btn:active:not(:disabled),
+.emoji-btn:active,
+.send-btn:active {
+    transform: scale(0.95);
+}
 
 .send-btn {
     background: #5288c1;
     color: #ffffff;
-    border: none;
-    border-radius: 50%;
-    width: 48px;
-    height: 48px;
-    font-size: 20px;
-    cursor: pointer;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s, transform 0.1s;
-    box-sizing: border-box;
 }
 
-.send-btn:hover { background: #6a9fd1; }
-.send-btn:active { background: #3d6e9e; transform: scale(0.95); }
+.send-btn:hover {
+    background: #6a9fd1;
+}
 
-/* ═══ Cancel edit (крестик) ═══ */
+/* ═══ Cancel edit ═══ */
 
 .cancel-edit-btn {
     background: transparent;
@@ -447,30 +517,115 @@ html, body {
     color: #e0e0e0;
 }
 
-/* ═══ Message menu ═══ */
+/* ═══════════════════════════════════════════════════════════
+   MESSAGE MENU (современный)
+   ═══════════════════════════════════════════════════════════ */
 
 .msg-menu {
-    background: #2b3a48;
-    border: 1px solid #0a0e14;
-    border-radius: 8px;
-    padding: 4px 0;
-    min-width: 180px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    background: rgba(43, 58, 72, 0.95);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 6px;
+    min-width: 200px;
+    box-shadow:
+        0 12px 32px rgba(0, 0, 0, 0.5),
+        0 4px 12px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
     z-index: 1000;
+    overflow: hidden;
+    animation: msgMenuIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    transform-origin: top left;
+}
+
+@keyframes msgMenuIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
 }
 
 .msg-menu-item {
-    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
     font-size: 13px;
+    font-weight: 500;
     color: #e0e0e0;
     cursor: pointer;
-    transition: background 0.15s;
+    border-radius: 8px;
+    transition: background 0.12s, color 0.12s;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
-.msg-menu-item:hover { background: #3a4a58; }
+.msg-menu-item:hover {
+    background: rgba(82, 136, 193, 0.18);
+    color: #ffffff;
+}
 
-.msg-menu-danger { color: #e74c3c; }
-.msg-menu-danger:hover { background: #4a2a2a; }
+.msg-menu-item:active {
+    background: rgba(82, 136, 193, 0.28);
+    transform: scale(0.98);
+}
+
+.msg-menu-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    color: #7d8b99;
+    transition: color 0.12s;
+}
+
+.msg-menu-item:hover .msg-menu-icon {
+    color: #5288c1;
+}
+
+.msg-menu-label {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ⬅️ Разделитель */
+.msg-menu-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    margin: 6px 8px;
+}
+
+/* ⬅️ Опасное действие (Удалить) */
+.msg-menu-danger {
+    color: #ef5350;
+}
+
+.msg-menu-danger .msg-menu-icon {
+    color: #ef5350;
+}
+
+.msg-menu-danger:hover {
+    background: rgba(239, 83, 80, 0.15);
+    color: #ff6b68;
+}
+
+.msg-menu-danger:hover .msg-menu-icon {
+    color: #ff6b68;
+}
+
+.msg-menu-danger:active {
+    background: rgba(239, 83, 80, 0.25);
+}
 
 /* ═══ Emoji picker ═══ */
 
@@ -522,33 +677,10 @@ em-emoji-picker {
     z-index: 1002;
 }
 
-.attach-btn {
-    background: transparent;
-    border: none;
-    font-size: 20px;
-    cursor: pointer;
-    padding: 0 4px;
-    flex-shrink: 0;
-    line-height: 1;
-    opacity: 0.5;
-    transition: opacity 0.15s, transform 0.1s;
-    box-sizing: border-box;
-    margin-bottom: 2px;
-}
-
-.attach-btn:hover {
-    opacity: 1;
-    transform: scale(1.1);
-}
-
-.attach-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
-
 .toast.show { opacity: 1; }
 
-/* ═══ Attachments в сообщении ═══ */
+
+/* ═══ Attachments ═══ */
 
 .attachments {
     margin-top: 6px;
@@ -579,8 +711,6 @@ em-emoji-picker {
 
 .attachment-image:hover img { opacity: 0.9; }
 
-/* ═══ Файлы / видео / аудио ═══ */
-
 .attachment-file {
     display: inline-block;
     padding: 6px 10px;
@@ -602,6 +732,125 @@ a.attachment-file {
 a.attachment-file:hover {
     background: #3a4a58;
     color: #ffffff;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ATTACH PREVIEW LIST (множественные вложения)
+   ═══════════════════════════════════════════════════════════ */
+
+/* Контейнер — список файлов */
+.attach-preview-list {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+    align-self: stretch;
+    max-width: 100%;
+}
+
+/* Один файл в списке */
+.attach-preview {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: #182533;
+    border: 1px solid #2b3a48;
+    border-radius: 10px;
+    font-size: 13px;
+    color: #e0e0e0;
+    box-sizing: border-box;
+    align-self: flex-start;
+    max-width: 100%;
+    animation: attachPreviewIn 0.15s ease-out;
+}
+
+.attach-preview-icon {
+    flex-shrink: 0;
+    font-size: 16px;
+    line-height: 1;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.attach-preview-name {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #a8c8e8;
+    font-weight: 500;
+}
+
+.attach-preview-size {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: #7d8b99;
+    font-family: monospace;
+    white-space: nowrap;
+}
+
+/* ═══ Кнопка удаления ═══ */
+
+.attach-preview-remove {
+    flex-shrink: 0;
+    background: transparent;
+    color: #7d8b99;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    min-height: 24px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background 0.15s, transform 0.1s;
+    box-sizing: border-box;
+}
+
+.attach-preview-remove svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+    pointer-events: none;
+}
+
+.attach-preview-remove:hover {
+    color: #ffffff;
+    background: #4a2a2a;
+}
+
+.attach-preview-remove:active {
+    transform: scale(0.9);
+}
+
+/* ═══ Анимация появления ═══ */
+
+@keyframes attachPreviewIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+        max-height: 0;
+        margin-bottom: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+        max-height: 100px;
+        margin-bottom: 6px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+    }
 }
 
 /* ═══ Forward modal ═══ */
@@ -747,9 +996,496 @@ a.attachment-file:hover {
     color: #2b5278;
 }
 
+/* ═══ Мобильное меню (кнопка-гамбургер) ═══ */
+
+.menu-toggle {
+    display: none;
+    background: transparent;
+    border: none;
+    color: #e0e0e0;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 4px 8px;
+    margin-right: 8px;
+    border-radius: 6px;
+    transition: background 0.15s;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.menu-toggle:hover { background: #2b3a48; }
+
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+    cursor: pointer;
+}
+
+.sidebar-overlay.active { display: block; }
+
+
+/* ═══ Loading spinner (вместо ⏳) ═══ */
+
+.spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(224, 224, 224, 0.3);
+    border-top-color: #e0e0e0;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* В кнопке */
+.header-btn.loading {
+    pointer-events: none;
+}
+
+.header-btn.loading .spinner {
+    width: 14px;
+    height: 14px;
+    border-width: 2px;
+}
+
 /* ═══ Scrollbar ═══ */
 
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #2b3a48; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #3a4a58; }
+::-webkit-scrollbar {
+    width: 4px;                  /* ⬅️ было 8px, стало 4px */
+    height: 4px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #2b3a48;
+    border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #5288c1;         /* ⬅️ при наведении — синий */
+}
+
+.content-body::-webkit-scrollbar {
+    width: 4px;
+    background: transparent;
+}
+
+.content-body::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 4px;
+}
+
+.content-body:hover::-webkit-scrollbar-thumb {
+    background: #2b3a48;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE / ADAPTIVE
+   ═══════════════════════════════════════════════════════════ */
+
+/* ═══ Планшет / раскрытый телефон (640px) ═══ */
+@media (max-width: 640px) {
+    /* ═══ Sidebar ═══ */
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: min(100vw, 360px);
+        max-width: min(100vw, 360px);
+        transform: translateX(-100%);
+        transition: transform 0.25s ease-out;
+        z-index: 100;
+        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+    }
+
+    .menu-toggle {
+        display: inline-block;
+    }
+
+    .content {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        height: 100dvh;
+    }
+
+    /* ═══ Шапка — фиксирована сверху ═══ */
+    .content-header {
+        padding: 10px 12px;
+        gap: 8px;
+        flex-shrink: 0;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+
+    .content-name {
+        font-size: 16px;
+    }
+
+    .content-meta {
+        font-size: 11px;
+    }
+
+    /* ═══ Кнопки шапки — компактнее ═══ */
+    .header-actions {
+        gap: 6px;
+    }
+
+    .header-btn {
+        width: 34px;
+        height: 34px;
+        min-width: 34px;
+        min-height: 34px;
+        font-size: 16px;
+    }
+
+    /* ═══ Скроллится только content-body ═══ */
+    .content-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        padding: 12px 12px;
+    }
+
+    /* ═══ Подвал — фиксирован снизу ═══ */
+    .send-form {
+        padding: 8px 12px;
+        padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .send-frame {
+        padding: 6px 10px;
+        min-height: 42px;
+        border-radius: 20px;
+    }
+
+    .send-input {
+        font-size: 16px;         /* ⬅️ 16px чтобы iOS не зумил */
+        min-height: 24px;
+        max-height: 100px;
+    }
+
+    .attach-btn,
+    .emoji-btn,
+    .send-btn {
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        min-height: 32px;
+    }
+
+    .attach-btn svg,
+    .emoji-btn svg,
+    .send-btn svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    .bubble {
+        max-width: 85%;
+    }
+
+    /* ═══ Меню сообщений — touch-friendly ═══ */
+    .msg-menu {
+        min-width: 220px;
+        padding: 8px;
+        border-radius: 14px;
+    }
+
+    .msg-menu-item {
+        padding: 12px 14px;
+        font-size: 14px;
+        gap: 12px;
+    }
+
+    .msg-menu-icon {
+        width: 20px;
+        height: 20px;
+    }
+
+    .msg-menu-divider {
+        margin: 6px 12px;
+    }
+
+    .msg-menu-btn {
+        opacity: 1;
+        padding: 4px 8px;
+        font-size: 16px;
+    }
+
+    /* ═══ Emoji-picker — на всю ширину снизу ═══ */
+    .emoji-picker-wrapper {
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        position: fixed !important;
+    }
+
+    em-emoji-picker {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 45vh !important;
+        max-height: 45vh !important;
+        border-radius: 12px 12px 0 0 !important;
+    }
+
+    /* ═══ Forward modal — на всю ширину снизу ═══ */
+    .forward-modal-content {
+        width: 100%;
+        max-width: 100%;
+        max-height: 80vh;
+        border-radius: 16px 16px 0 0;
+        align-self: flex-end;
+    }
+
+    .forward-modal {
+        align-items: flex-end;
+    }
+
+    .attachment-image {
+        max-width: 100%;
+    }
+
+    .attachment-image img {
+        max-height: 300px;
+    }
+
+    /* ═══ УБИРАЕМ СКРОЛЛБАРЫ ═══ */
+    .content-body::-webkit-scrollbar,
+    .sidebar::-webkit-scrollbar,
+    .forward-modal-list::-webkit-scrollbar {
+        display: none;
+        width: 0;
+        height: 0;
+    }
+
+    .content-body,
+    .sidebar,
+    .forward-modal-list {
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+
+    /* ═══ Attach preview на мобиле ═══ */
+    /* Attach preview — строка, как на десктопе */
+    .attach-preview-list {
+        flex-direction: row;        /* ⬅️ строка */
+        flex-wrap: wrap;            /* ⬅️ перенос */
+        gap: 4px;                   /* ⬅️ на мобиле чуть меньше */
+        margin-bottom: 4px;
+    }
+
+    .attach-preview {
+        align-self: flex-start;     /* ⬅️ по контенту */
+        max-width: 100%;
+        padding: 5px 7px;
+        gap: 6px;
+        font-size: 12px;
+        border-radius: 8px;
+    }
+
+    .attach-preview-icon {
+        font-size: 14px;
+        width: 20px;
+        height: 20px;
+    }
+
+    .attach-preview-name {
+        font-size: 12px;
+    }
+
+    .attach-preview-size {
+        font-size: 10px;
+    }
+
+    .attach-preview-remove {
+        width: 28px;
+        height: 28px;
+        min-width: 28px;
+        min-height: 28px;
+    }
+
+    .attach-preview-remove svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    /* ═══ Глобально — без горизонтального скролла, без bounce ═══ */
+    html, body {
+        overflow: hidden;
+        position: fixed;
+        width: 100%;
+        height: 100dvh;
+    }
+}
+
+/* ═══ Телефон (480px) ═══ */
+@media (max-width: 480px) {
+    .sidebar {
+        width: 100vw;
+        max-width: 100vw;
+        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .content-body {
+        padding: 8px 8px;
+    }
+
+    .bubble {
+        max-width: 90%;
+        padding: 7px 10px;
+        font-size: 14px;
+    }
+
+    .bubble .text {
+        font-size: 14px;
+    }
+
+    .bubble .mid {
+        max-width: 100px;
+        font-size: 8px;
+    }
+
+    .content-name {
+        font-size: 14px;
+    }
+
+    .content-meta {
+        font-size: 10px;
+    }
+
+    /* ═══ Кнопки шапки — ещё компактнее ═══ */
+    .header-actions {
+        gap: 4px;
+    }
+
+    .header-btn {
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        min-height: 32px;
+        font-size: 15px;
+    }
+
+    .send-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 16px;
+    }
+
+    .send-frame {
+        padding: 6px 10px;
+        min-height: 38px;
+    }
+
+    .send-input {
+        font-size: 16px;
+        max-height: 80px;
+    }
+
+    .menu-toggle {
+        font-size: 22px;
+        padding: 2px 6px;
+    }
+}
+
+/* ═══ Safe area (iPhone notch, Android) ═══ */
+@supports (padding: env(safe-area-inset-bottom)) {
+    @media (max-width: 640px) {
+        .content-header {
+            padding-top: calc(10px + env(safe-area-inset-top, 0px));
+        }
+        .send-form {
+            padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+        }
+    }
+}
+
+/* ═══ Плавное появление сообщений ═══ */
+@keyframes bubbleIn {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.msg {
+    animation: bubbleIn 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .msg { animation: none; }
+    .sidebar { transition: none; }
+}
+
+/* ═══ Tooltip для кнопок шапки ═══ */
+
+.header-btn {
+    position: relative;       /* ⬅️ для абсолютного tooltip */
+}
+
+.header-btn[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: #2b3a48;
+    color: #e0e0e0;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    border: 1px solid #0a0e14;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+}
+
+.header-btn[data-tooltip]:hover::after,
+.header-btn[data-tooltip].show-tooltip::after {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Вспышка успеха */
+.header-btn.success {
+    background: #1e4620;
+    border-color: #2e7d32;
+    color: #66bb6a;
+}
+
+/* Вспышка ошибки */
+.header-btn.error {
+    background: #4a1e1e;
+    border-color: #7d2e2e;
+    color: #ef5350;
+}

@@ -201,15 +201,22 @@ def get_messages_since(user_id: str, since_datetime: str) -> list[dict]:
     """, (chat_pk, since_datetime))
 
 
-def edit_message(mid: str, new_text: str) -> bool:
-    """Локальное редактирование."""
+def edit_message(mid: str, new_text: str, attachments_json: str = None) -> bool:
+    """Локальное редактирование текста + (опционально) вложений."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cur = db.execute("""
-        UPDATE messages SET text = ?, edited_at = ?
-        WHERE mid = ?
-    """, (new_text, now, mid))
-    return cur.rowcount > 0
 
+    if attachments_json is not None:
+        cur = db.execute("""
+            UPDATE messages SET text = ?, edited_at = ?, attachments = ?
+            WHERE mid = ?
+        """, (new_text, now, attachments_json, mid))
+    else:
+        cur = db.execute("""
+            UPDATE messages SET text = ?, edited_at = ?
+            WHERE mid = ?
+        """, (new_text, now, mid))
+
+    return cur.rowcount > 0
 
 # ⬅️ НОВОЕ: обновление attachments (для enrich url после отправки)
 def update_attachments(mid: str, attachments_json: str) -> bool:
